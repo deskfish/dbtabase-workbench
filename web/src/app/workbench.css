@@ -90,4 +90,23 @@
 .tree-table-row { min-height: 34px; }
 .tree-column { min-height: 28px; }
 
+/* Filter builder: secondary controls stay secondary to the data grid. */
+.table-view-toolbar { min-height: 44px; padding: 7px 12px; background: var(--surface); }
+.table-filter-panel { padding: 0 12px 10px; background: var(--surface); }
+.table-filter-table { padding: 10px 0 0; }
+.table-filter-header,
+.table-filter-row { grid-template-columns: 24px minmax(150px, 1fr) minmax(120px, .75fr) minmax(190px, 1.2fr) 72px 30px; gap: 8px; }
+.table-filter-header { padding: 0 0 6px; font-size: 11px; font-weight: 600; }
+.table-filter-rows { gap: 6px; padding-bottom: 10px; }
+.filter-check input { appearance: none; width: 16px; height: 16px; margin: 0; border: 1px solid var(--line-strong); border-radius: 4px; background: var(--surface); cursor: pointer; }
+.filter-check input:checked { border-color: var(--accent); background: var(--accent); box-shadow: inset 0 0 0 3px var(--surface); }
+.table-filter-row select,
+.table-filter-row input { min-height: 34px; padding: 0 10px; font: 12px var(--font-ui); background: var(--surface); }
+.filter-value-hint,
+.filter-join-empty { min-height: 34px; padding: 0 10px; font: 11px var(--font-ui); background: var(--surface-2); }
+.filter-join-btn { min-width: 64px; height: 34px; font: 12px var(--font-ui); }
+.table-filter-actions { padding: 10px 0 0; border-top: 1px solid var(--line); background: transparent; }
+.filter-action-spacer { flex: 1; }
+.filter-add { color: var(--accent); border-color: color-mix(in srgb, var(--accent) 36%, var(--line)); background: color-mix(in srgb, var(--accent) 7%, var(--surface)); }
+
 @media (max-width:800px) { .app-shell { grid-template-columns:0 minmax(0,1fr); }.sidebar { position:fixed; z-index:20; top:0; bottom:0; left:0; width:320px; transform:translateX(-100%); }.workspace { grid-column:2; }.query-toolbar .toolbar-separator,.transaction-state { display:none; } }

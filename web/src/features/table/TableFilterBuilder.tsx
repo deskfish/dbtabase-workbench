@@ -110,10 +110,10 @@ export function TableFilterBuilder({
     </div>
 
     <div className="table-filter-actions">
-      <button type="button" className="icon-tool tiny" aria-label="添加条件" title="添加条件" onClick={addRule}>＋</button>
-      <span className="toolbar-separator" />
-      <button type="button" className="icon-tool" aria-label="应用筛选" title="应用筛选" onClick={applyDraft}>✓</button>
-      <button type="button" className="button ghost compact" onClick={clearDraft}>清除</button>
+      <button type="button" className="button compact filter-add" onClick={addRule}>＋ 添加条件</button>
+      <span className="filter-action-spacer" />
+      <button type="button" className="button compact" onClick={clearDraft}>清空条件</button>
+      <button type="button" className="button primary compact" onClick={applyDraft}>应用筛选</button>
     </div>
   </div>
 }
