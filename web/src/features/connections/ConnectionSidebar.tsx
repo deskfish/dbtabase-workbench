@@ -75,7 +75,7 @@ export function ConnectionSidebar({
     ]
     : []
 
-  return <aside className="sidebar navicat-sidebar" aria-label="连接与对象导航">
+  return <><aside className="sidebar navicat-sidebar connection-sidebar" aria-label="连接导航">
     <div className="sidebar-profile">
       <button type="button" className="profile-chip" onClick={onEditProfile} title="编辑昵称与界面配色">
         <span className="profile-avatar">{nickname.slice(0, 1).toUpperCase()}</span>
@@ -132,6 +132,7 @@ export function ConnectionSidebar({
       </div>
     </div>
 
+    </aside><aside className="sidebar catalog-sidebar" aria-label="数据库目录">
     {connected && activeDriver && <DatabaseSwitcher
       driver={activeDriver}
       current={activeDatabase}
@@ -160,7 +161,8 @@ export function ConnectionSidebar({
           />}
     </div>
 
+    </aside>
     {connectionMenu && <ContextMenu x={connectionMenu.x} y={connectionMenu.y} items={connectionMenuItems} onClose={() => setConnectionMenu(null)} />}
     {teamOpen && <TeamConnectionsDialog connections={teamConnections} personalConnections={savedConnections} onCopy={onCopyTeamConnection} onClose={()=>setTeamOpen(false)}/>} 
-  </aside>
+  </>
 }

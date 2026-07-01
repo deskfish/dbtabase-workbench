@@ -47,6 +47,7 @@ it('renders saved connections and triggers selection', async () => {
   />)
   expect(screen.getByText('小明')).toBeVisible()
   expect(screen.getByText('Reporting')).toBeVisible()
+  expect(screen.getByRole('complementary', {name: '数据库目录'})).toBeVisible()
   await userEvent.click(screen.getByRole('button', {name: '连接 Reporting'}))
   expect(onSelect).toHaveBeenCalledWith(saved[0])
 })
