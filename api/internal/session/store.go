@@ -10,6 +10,7 @@ import (
 
 type entry struct {
 	db       *sql.DB
+	driver   string
 	lastUsed time.Time
 }
 
@@ -37,6 +38,10 @@ func (s *Store) CreateSession() string {
 }
 
 func (s *Store) Put(sessionID string, database *sql.DB) string {
+	return s.PutConnection(sessionID, database, "")
+}
+
+func (s *Store) PutConnection(sessionID string, database *sql.DB, driver string) string {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	connections, ok := s.sessions[sessionID]
@@ -46,10 +51,28 @@ func (s *Store) Put(sessionID string, database *sql.DB) string {
 	for {
 		id := randomID()
 		if _, exists := connections[id]; !exists {
-			connections[id] = &entry{db: database, lastUsed: s.now()}
+			connections[id] = &entry{db: database, driver: driver, lastUsed: s.now()}
 			return id
 		}
 	}
+}
+
+func (s *Store) HasSession(sessionID string) bool {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	_, ok := s.sessions[sessionID]
+	return ok
+}
+
+func (s *Store) GetConnection(sessionID, connectionID string) (*sql.DB, string, bool) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	connection, ok := s.sessions[sessionID][connectionID]
+	if !ok {
+		return nil, "", false
+	}
+	connection.lastUsed = s.now()
+	return connection.db, connection.driver, true
 }
 
 func (s *Store) Get(sessionID, connectionID string) (*sql.DB, bool) {
@@ -66,6 +89,9 @@ func (s *Store) Get(sessionID, connectionID string) (*sql.DB, bool) {
 func (s *Store) Delete(sessionID, connectionID string) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
+	if connection := s.sessions[sessionID][connectionID]; connection != nil && connection.db != nil {
+		_ = connection.db.Close()
+	}
 	delete(s.sessions[sessionID], connectionID)
 }
 

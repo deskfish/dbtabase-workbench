@@ -1,7 +1,6 @@
 package session
 
 import (
-	"database/sql"
 	"testing"
 	"time"
 )
@@ -10,7 +9,7 @@ func TestStoreScopesConnectionsToOwningSession(t *testing.T) {
 	store := NewStore(30 * time.Minute)
 	owner := store.CreateSession()
 	other := store.CreateSession()
-	connectionID := store.Put(owner, &sql.DB{})
+	connectionID := store.Put(owner, nil)
 	if connectionID == "" {
 		t.Fatal("empty connection ID")
 	}
@@ -24,7 +23,7 @@ func TestStoreScopesConnectionsToOwningSession(t *testing.T) {
 
 func TestUnknownSessionCannotStoreConnection(t *testing.T) {
 	store := NewStore(time.Minute)
-	if id := store.Put("unknown", &sql.DB{}); id != "" {
+	if id := store.Put("unknown", nil); id != "" {
 		t.Fatalf("connection ID = %q", id)
 	}
 }
@@ -32,7 +31,7 @@ func TestUnknownSessionCannotStoreConnection(t *testing.T) {
 func TestDeleteRemovesConnection(t *testing.T) {
 	store := NewStore(time.Minute)
 	sessionID := store.CreateSession()
-	connectionID := store.Put(sessionID, &sql.DB{})
+	connectionID := store.Put(sessionID, nil)
 	store.Delete(sessionID, connectionID)
 	if _, ok := store.Get(sessionID, connectionID); ok {
 		t.Fatal("deleted connection remains accessible")
