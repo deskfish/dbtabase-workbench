@@ -12,6 +12,7 @@ import (
 	database "dbworkbench/api/internal/db"
 	"dbworkbench/api/internal/query"
 	"dbworkbench/api/internal/session"
+	"dbworkbench/api/internal/table"
 )
 
 type Dependencies struct {
@@ -20,6 +21,7 @@ type Dependencies struct {
 	ValidateDestination func(context.Context, string, uint16) error
 	OpenConnection      func(context.Context, database.ConnectionInput) (*sql.DB, error)
 	Queries             *query.Service
+	Transactions        *query.TransactionService
 }
 
 func NewRouter(deps Dependencies) http.Handler {
@@ -98,6 +100,9 @@ func NewRouter(deps Dependencies) http.Handler {
 		if deps.Queries != nil {
 			registerQueryRoutes(mux, deps)
 		}
+		if deps.Transactions != nil {
+			registerTransactionRoutes(mux, deps)
+		}
 	}
 	return mux
 }
@@ -118,6 +123,7 @@ func registerQueryRoutes(mux *http.ServeMux, deps Dependencies) {
 			SQL                string `json:"sql"`
 			Confirmed          bool   `json:"confirmed"`
 			ConfirmationTarget string `json:"confirmationTarget"`
+			TransactionID      string `json:"transactionId"`
 		}
 		if err := decodeJSON(w, r, &input); err != nil {
 			return
@@ -135,7 +141,20 @@ func registerQueryRoutes(mux *http.ServeMux, deps Dependencies) {
 			writeJSON(w, http.StatusConflict, map[string]any{"error": map[string]any{"code": "target_confirmation_required", "message": risk.Reason, "risk": risk}})
 			return
 		}
-		queryID := deps.Queries.Start(queryScope(sessionID, connectionID), dbHandle, input.SQL)
+		var executor query.Executor = dbHandle
+		if input.TransactionID != "" {
+			if deps.Transactions == nil {
+				writeError(w, http.StatusBadRequest, "transactions_unavailable", "事务服务不可用")
+				return
+			}
+			tx, found := deps.Transactions.Get(queryScope(sessionID, connectionID), input.TransactionID)
+			if !found {
+				writeError(w, http.StatusNotFound, "transaction_not_found", "事务不存在或已过期")
+				return
+			}
+			executor = tx
+		}
+		queryID := deps.Queries.Start(queryScope(sessionID, connectionID), executor, input.SQL)
 		writeJSON(w, http.StatusAccepted, map[string]string{"queryId": queryID})
 	})
 	mux.HandleFunc("GET /api/connections/{id}/queries/{queryId}", func(w http.ResponseWriter, r *http.Request) {
@@ -188,6 +207,120 @@ func registerQueryRoutes(mux *http.ServeMux, deps Dependencies) {
 			http.Error(w, "export failed", http.StatusBadGateway)
 		}
 	})
+}
+
+func registerTransactionRoutes(mux *http.ServeMux, deps Dependencies) {
+	mux.HandleFunc("POST /api/connections/{id}/transactions", func(w http.ResponseWriter, r *http.Request) {
+		sessionID, ok := requireSession(w, r, deps.Sessions)
+		if !ok {
+			return
+		}
+		connectionID := r.PathValue("id")
+		dbHandle, _, found := deps.Sessions.GetConnection(sessionID, connectionID)
+		if !found {
+			writeError(w, http.StatusNotFound, "connection_not_found", "连接不存在或已过期")
+			return
+		}
+		id, err := deps.Transactions.Begin(queryScope(sessionID, connectionID), dbHandle)
+		if err != nil {
+			writeError(w, http.StatusBadGateway, "transaction_failed", "无法开始事务")
+			return
+		}
+		writeJSON(w, http.StatusCreated, map[string]string{"transactionId": id})
+	})
+	mux.HandleFunc("POST /api/connections/{id}/transactions/{txId}/commit", func(w http.ResponseWriter, r *http.Request) {
+		finishTransaction(w, r, deps, true)
+	})
+	mux.HandleFunc("POST /api/connections/{id}/transactions/{txId}/rollback", func(w http.ResponseWriter, r *http.Request) {
+		finishTransaction(w, r, deps, false)
+	})
+	mux.HandleFunc("POST /api/connections/{id}/rows/{operation}", func(w http.ResponseWriter, r *http.Request) {
+		sessionID, ok := requireSession(w, r, deps.Sessions)
+		if !ok {
+			return
+		}
+		connectionID := r.PathValue("id")
+		dbHandle, driverName, found := deps.Sessions.GetConnection(sessionID, connectionID)
+		if !found {
+			writeError(w, http.StatusNotFound, "connection_not_found", "连接不存在或已过期")
+			return
+		}
+		var input struct {
+			table.Mutation
+			TransactionID string `json:"transactionId"`
+		}
+		if err := decodeJSON(w, r, &input); err != nil {
+			return
+		}
+		driver := database.Driver(driverName)
+		var statement table.Statement
+		var err error
+		switch r.PathValue("operation") {
+		case "insert":
+			statement, err = table.BuildInsert(driver, input.Mutation)
+		case "update":
+			statement, err = table.BuildUpdate(driver, input.Mutation)
+		case "delete":
+			statement, err = table.BuildDelete(driver, input.Mutation)
+		default:
+			writeError(w, http.StatusNotFound, "operation_not_found", "不支持的数据操作")
+			return
+		}
+		if errors.Is(err, table.ErrUniqueKeyRequired) {
+			writeError(w, http.StatusUnprocessableEntity, "unique_key_required", "修改或删除需要主键或唯一键")
+			return
+		}
+		if err != nil {
+			writeError(w, http.StatusBadRequest, "invalid_mutation", "数据修改请求无效")
+			return
+		}
+		if input.TransactionID != "" {
+			tx, ok := deps.Transactions.Get(queryScope(sessionID, connectionID), input.TransactionID)
+			if !ok {
+				writeError(w, http.StatusNotFound, "transaction_not_found", "事务不存在或已过期")
+				return
+			}
+			if err := table.ExecuteOne(r.Context(), tx, statement); err != nil {
+				writeError(w, http.StatusConflict, "mutation_failed", "数据修改未影响恰好一行")
+				return
+			}
+		} else {
+			tx, err := dbHandle.BeginTx(r.Context(), nil)
+			if err != nil {
+				writeError(w, http.StatusBadGateway, "transaction_failed", "无法开始数据修改")
+				return
+			}
+			if err := table.ExecuteOne(r.Context(), tx, statement); err != nil {
+				_ = tx.Rollback()
+				writeError(w, http.StatusConflict, "mutation_failed", "数据修改未影响恰好一行")
+				return
+			}
+			if err := tx.Commit(); err != nil {
+				writeError(w, http.StatusBadGateway, "commit_failed", "数据修改提交失败")
+				return
+			}
+		}
+		writeJSON(w, http.StatusOK, map[string]int{"affectedRows": 1})
+	})
+}
+
+func finishTransaction(w http.ResponseWriter, r *http.Request, deps Dependencies, commit bool) {
+	sessionID, ok := requireSession(w, r, deps.Sessions)
+	if !ok {
+		return
+	}
+	scope := queryScope(sessionID, r.PathValue("id"))
+	var err error
+	if commit {
+		err = deps.Transactions.Commit(scope, r.PathValue("txId"))
+	} else {
+		err = deps.Transactions.Rollback(scope, r.PathValue("txId"))
+	}
+	if err != nil {
+		writeError(w, http.StatusNotFound, "transaction_not_found", "事务不存在或已过期")
+		return
+	}
+	w.WriteHeader(http.StatusNoContent)
 }
 
 func queryScope(sessionID, connectionID string) string { return sessionID + "/" + connectionID }

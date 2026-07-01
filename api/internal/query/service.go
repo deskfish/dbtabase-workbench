@@ -58,6 +58,11 @@ type Service struct {
 	jobs   map[string]*job
 }
 
+type Executor interface {
+	QueryContext(context.Context, string, ...any) (*sql.Rows, error)
+	ExecContext(context.Context, string, ...any) (sql.Result, error)
+}
+
 func NewService(limits Limits) *Service {
 	if limits.Timeout <= 0 {
 		limits.Timeout = 30 * time.Second
@@ -71,7 +76,7 @@ func NewService(limits Limits) *Service {
 	return &Service{limits: limits, jobs: make(map[string]*job)}
 }
 
-func (s *Service) Start(scope string, database *sql.DB, statement string) string {
+func (s *Service) Start(scope string, database Executor, statement string) string {
 	ctx, cancel := context.WithTimeout(context.Background(), s.limits.Timeout)
 	id := opaqueID()
 	item := &job{scope: scope, cancel: cancel, done: make(chan struct{})}
@@ -82,7 +87,7 @@ func (s *Service) Start(scope string, database *sql.DB, statement string) string
 	return id
 }
 
-func (s *Service) run(ctx context.Context, item *job, database *sql.DB, statement string) {
+func (s *Service) run(ctx context.Context, item *job, database Executor, statement string) {
 	started := time.Now()
 	defer func() { item.duration = time.Since(started); item.cancel(); close(item.done) }()
 	if !returnsRows(statement) {
