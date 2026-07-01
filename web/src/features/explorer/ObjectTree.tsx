@@ -2,6 +2,7 @@ import { useState } from 'react'
 import type { DatabaseObject } from '../../api/types'
 import { ContextMenu, type ContextMenuItem } from '../ui/ContextMenu'
 import { qualifiedTableName, tableKey } from '../workspace/types'
+import { Icon } from '../ui/Icon'
 
 type TreeMenu =
   | {kind: 'table'; table: DatabaseObject; x: number; y: number}
@@ -64,7 +65,7 @@ export function ObjectTree({
               aria-expanded={isExpanded}
               onClick={() => setExpanded((state) => ({...state, [key]: !isExpanded}))}
             >
-              {isExpanded ? '▾' : '▸'}
+              <Icon name={isExpanded ? 'chevron-down' : 'chevron-right'} />
             </button>
             <button
               type="button"

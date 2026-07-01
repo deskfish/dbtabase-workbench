@@ -6,6 +6,7 @@ import { isTeamConnectionImported } from '../../storage/teamConnectionMatch'
 import { ContextMenu, type ContextMenuItem } from '../ui/ContextMenu'
 import { DatabaseSwitcher } from './DatabaseSwitcher'
 import { ObjectTree } from '../explorer/ObjectTree'
+import { Icon } from '../ui/Icon'
 
 const TEAM_PANEL_KEY = 'dbw-team-open'
 
@@ -101,7 +102,7 @@ export function ConnectionSidebar({
 
     <div className={`connection-panel team-panel ${teamOpen ? '' : 'collapsed'}`}>
       <button type="button" className="panel-heading connection-panel-heading panel-toggle" aria-expanded={teamOpen} onClick={toggleTeamPanel}>
-        <span className="panel-expand" aria-hidden="true">{teamOpen ? '▾' : '▸'}</span>
+        <span className="panel-expand" aria-hidden="true"><Icon name={teamOpen ? 'chevron-down' : 'chevron-right'} /></span>
         <div>
           <span>团队连接</span>
           <small>{teamOpen ? '导入后可自行编辑维护' : '点击展开查看团队共享'}</small>
@@ -137,10 +138,10 @@ export function ConnectionSidebar({
     <div className="connection-panel">
       <div className="panel-heading connection-panel-heading">
         <div><span>我的连接</span><small>点击切换 · 右键共享到团队</small></div>
-        <button type="button" aria-label="新建连接" className="icon-button" onClick={onNewConnection}>＋</button>
+        <button type="button" aria-label="新建连接" className="icon-button" onClick={onNewConnection}><Icon name="plus" /></button>
       </div>
       <div className="connection-list" role="list">
-        {savedConnections.length === 0 && <div className="empty-state compact">还没有保存的连接，点击 ＋ 新建</div>}
+        {savedConnections.length === 0 && <div className="empty-state compact">还没有保存的连接，请从右上角新建</div>}
         {savedConnections.map((saved) => {
           const active = saved.id === activeSavedId
           const busy = connectingId === saved.id
@@ -171,8 +172,8 @@ export function ConnectionSidebar({
               {active && connected && !busy && <span className="connection-status online">已连接</span>}
             </button>
             <div className="connection-actions">
-              <button type="button" aria-label={`编辑 ${saved.name}`} className="icon-button tiny" onClick={() => onEditConnection(saved)}>✎</button>
-              <button type="button" aria-label={`删除 ${saved.name}`} className="icon-button tiny danger" onClick={() => onDeleteConnection(saved)}>×</button>
+              <button type="button" aria-label={`编辑 ${saved.name}`} className="icon-button tiny" onClick={() => onEditConnection(saved)}><Icon name="edit" /></button>
+              <button type="button" aria-label={`删除 ${saved.name}`} className="icon-button tiny danger" onClick={() => onDeleteConnection(saved)}><Icon name="trash" /></button>
             </div>
           </div>
         })}

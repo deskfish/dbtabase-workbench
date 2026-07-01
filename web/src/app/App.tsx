@@ -26,6 +26,7 @@ import { addHistory, listHistory, toggleFavorite, type HistoryEntry } from '../f
 import { HistoryPanel } from '../features/history/HistoryPanel'
 import { useTransactionGuard } from '../features/editor/useTransaction'
 import { TableView } from '../features/table/TableView'
+import { Icon } from '../features/ui/Icon'
 import {
   createQueryTab,
   createTableTab,
@@ -523,9 +524,9 @@ export function App({api, sessionBootstrap, initialConnectionId = '', initialSQL
               event.stopPropagation()
               closeTab(tab.id)
             }}
-          >×</i>
+          ><Icon name="close" /></i>
         </button>)}
-        <button type="button" className="new-tab" aria-label="新建查询标签" onClick={() => openQueryTab(initialSQL)}>＋</button>
+        <button type="button" className="new-tab" aria-label="新建查询标签" onClick={() => openQueryTab(initialSQL)}><Icon name="plus" /></button>
       </nav>
 
       {activeTab?.kind === 'table' && <>
@@ -572,8 +573,8 @@ export function App({api, sessionBootstrap, initialConnectionId = '', initialSQL
 
       {activeTab?.kind === 'query' && <>
         <div className="query-toolbar">
-          <button type="button" aria-label="执行 SQL" className="button primary" onClick={execute} disabled={!connected || status === 'running'}>▶ 执行 SQL</button>
-          <button type="button" aria-label="停止查询" className="button ghost" disabled={!queryId || status !== 'running'} onClick={() => void api.cancelQuery(connectionId, queryId)}>■ 停止</button>
+          <button type="button" aria-label="执行 SQL" className="button primary button-with-icon" onClick={execute} disabled={!connected || status === 'running'}><Icon name="play" />执行 SQL</button>
+          <button type="button" aria-label="停止查询" className="button ghost button-with-icon" disabled={!queryId || status !== 'running'} onClick={() => void api.cancelQuery(connectionId, queryId)}><Icon name="stop" />停止</button>
           <span className="toolbar-separator" />
           <button type="button" className="button ghost" onClick={async () => transaction.open(await api.beginTransaction(connectionId))} disabled={!connected || Boolean(transactionId)}>开始事务</button>
           <button type="button" className="button ghost" onClick={async () => {await api.finishTransaction(connectionId, transactionId, 'commit'); transaction.close()}} disabled={!transactionId}>提交</button>

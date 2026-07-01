@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react'
+import { Icon } from '../ui/Icon'
 
 export function DatabaseSwitcher({driver, current, databases, busy, onSwitch}: {
   driver: 'mysql' | 'postgres'
@@ -16,7 +17,7 @@ export function DatabaseSwitcher({driver, current, databases, busy, onSwitch}: {
   return <div className="database-panel">
     <div className="panel-heading database-panel-heading">
       <div><span>数据库</span><small>{driver === 'postgres' ? 'PostgreSQL 实例内切换' : 'MySQL 实例内切换'}</small></div>
-      <button type="button" className="icon-button" aria-label={expanded ? '收起数据库列表' : '展开数据库列表'} onClick={() => setExpanded((value) => !value)}>{expanded ? '▾' : '▸'}</button>
+      <button type="button" className="icon-button" aria-label={expanded ? '收起数据库列表' : '展开数据库列表'} onClick={() => setExpanded((value) => !value)}><Icon name={expanded ? 'chevron-down' : 'chevron-right'} /></button>
     </div>
     {expanded && <div className="database-list" role="listbox" aria-label="数据库列表">
       {databases.length === 0 && <div className="empty-state compact">正在加载数据库列表…</div>}

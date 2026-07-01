@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
+import { Icon } from './Icon'
 
 export type SelectOption = {value: string; label: string}
 
@@ -31,7 +32,7 @@ export function SelectControl({ariaLabel, value, options, onChange}: {
         aria-selected={item.value === value}
         key={item.value}
         onClick={() => { onChange(item.value); setOpen(false) }}
-      ><span className="select-check">{item.value === value ? '✓' : ''}</span>{item.label}</button>)}
+      ><span className="select-check">{item.value === value && <Icon name="check" />}</span>{item.label}</button>)}
     </div>}
   </div>
 }

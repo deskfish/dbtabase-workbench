@@ -185,5 +185,10 @@
 .result-grid small { font-family: var(--font-mono); font-size: 9px; }
 .table-filter-header { font-family: var(--font-ui); }
 .table-filter-row > .col-value > input { height: 34px; font-family: var(--font-ui); }
+.select-check { display: grid; place-items: center; }
+.select-check .ui-icon { width: 14px; height: 14px; }
+.panel-expand { display: grid; place-items: center; }
+.tab i { display: grid; place-items: center; }
+.tab i .ui-icon { width: 14px; height: 14px; }
 
 @media (max-width:800px) { .app-shell { grid-template-columns:0 minmax(0,1fr); }.sidebar { position:fixed; z-index:20; top:0; bottom:0; left:0; width:320px; transform:translateX(-100%); }.workspace { grid-column:2; }.query-toolbar .toolbar-separator,.transaction-state { display:none; } }
