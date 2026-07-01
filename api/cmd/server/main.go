@@ -11,6 +11,7 @@ import (
 	database "dbworkbench/api/internal/db"
 	"dbworkbench/api/internal/httpapi"
 	"dbworkbench/api/internal/network"
+	"dbworkbench/api/internal/query"
 	"dbworkbench/api/internal/session"
 )
 
@@ -21,6 +22,7 @@ func main() {
 	}
 	policy := network.Policy{AllowedCIDRs: cfg.AllowedCIDRs, AllowedPorts: cfg.AllowedPorts, AllowedSuffixes: cfg.AllowedSuffixes}
 	sessions := session.NewStore(30 * time.Minute)
+	queries := query.NewService(query.Limits{Timeout: cfg.QueryTimeout, PageSize: cfg.PageSize, MaxRows: cfg.MaxRows})
 	server := &http.Server{
 		Addr: cfg.Address,
 		Handler: httpapi.NewRouter(httpapi.Dependencies{
@@ -30,6 +32,7 @@ func main() {
 				return err
 			},
 			OpenConnection: database.Open,
+			Queries:        queries,
 		}),
 		ReadHeaderTimeout: 5 * time.Second,
 		IdleTimeout:       60 * time.Second,

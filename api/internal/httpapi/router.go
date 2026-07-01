@@ -4,10 +4,13 @@ import (
 	"context"
 	"database/sql"
 	"encoding/json"
+	"errors"
 	"net/http"
+	"strconv"
 	"time"
 
 	database "dbworkbench/api/internal/db"
+	"dbworkbench/api/internal/query"
 	"dbworkbench/api/internal/session"
 )
 
@@ -16,6 +19,7 @@ type Dependencies struct {
 	Sessions            *session.Store
 	ValidateDestination func(context.Context, string, uint16) error
 	OpenConnection      func(context.Context, database.ConnectionInput) (*sql.DB, error)
+	Queries             *query.Service
 }
 
 func NewRouter(deps Dependencies) http.Handler {
@@ -91,8 +95,108 @@ func NewRouter(deps Dependencies) http.Handler {
 			}
 			writeJSON(w, http.StatusOK, map[string]any{"objects": objects})
 		})
+		if deps.Queries != nil {
+			registerQueryRoutes(mux, deps)
+		}
 	}
 	return mux
+}
+
+func registerQueryRoutes(mux *http.ServeMux, deps Dependencies) {
+	mux.HandleFunc("POST /api/connections/{id}/queries", func(w http.ResponseWriter, r *http.Request) {
+		sessionID, ok := requireSession(w, r, deps.Sessions)
+		if !ok {
+			return
+		}
+		connectionID := r.PathValue("id")
+		dbHandle, _, found := deps.Sessions.GetConnection(sessionID, connectionID)
+		if !found {
+			writeError(w, http.StatusNotFound, "connection_not_found", "连接不存在或已过期")
+			return
+		}
+		var input struct {
+			SQL                string `json:"sql"`
+			Confirmed          bool   `json:"confirmed"`
+			ConfirmationTarget string `json:"confirmationTarget"`
+		}
+		if err := decodeJSON(w, r, &input); err != nil {
+			return
+		}
+		if input.SQL == "" {
+			writeError(w, http.StatusBadRequest, "sql_required", "SQL 不能为空")
+			return
+		}
+		risk := query.Classify(input.SQL)
+		if risk.Level == query.Confirm && !input.Confirmed {
+			writeJSON(w, http.StatusConflict, map[string]any{"error": map[string]any{"code": "confirmation_required", "message": risk.Reason, "risk": risk}})
+			return
+		}
+		if risk.Level == query.TypeTarget && (!input.Confirmed || input.ConfirmationTarget != risk.Target) {
+			writeJSON(w, http.StatusConflict, map[string]any{"error": map[string]any{"code": "target_confirmation_required", "message": risk.Reason, "risk": risk}})
+			return
+		}
+		queryID := deps.Queries.Start(queryScope(sessionID, connectionID), dbHandle, input.SQL)
+		writeJSON(w, http.StatusAccepted, map[string]string{"queryId": queryID})
+	})
+	mux.HandleFunc("GET /api/connections/{id}/queries/{queryId}", func(w http.ResponseWriter, r *http.Request) {
+		sessionID, ok := requireSession(w, r, deps.Sessions)
+		if !ok {
+			return
+		}
+		cursor, err := strconv.Atoi(defaultString(r.URL.Query().Get("cursor"), "0"))
+		if err != nil {
+			writeError(w, http.StatusBadRequest, "invalid_cursor", "结果游标格式不正确")
+			return
+		}
+		result, err := deps.Queries.Result(queryScope(sessionID, r.PathValue("id")), r.PathValue("queryId"), cursor)
+		if errors.Is(err, query.ErrQueryPending) {
+			writeJSON(w, http.StatusAccepted, map[string]string{"status": "running"})
+			return
+		}
+		if errors.Is(err, query.ErrQueryNotFound) {
+			writeError(w, http.StatusNotFound, "query_not_found", "查询不存在")
+			return
+		}
+		if err != nil {
+			writeError(w, http.StatusBadGateway, "query_failed", "查询执行失败")
+			return
+		}
+		writeJSON(w, http.StatusOK, result)
+	})
+	mux.HandleFunc("DELETE /api/connections/{id}/queries/{queryId}", func(w http.ResponseWriter, r *http.Request) {
+		sessionID, ok := requireSession(w, r, deps.Sessions)
+		if !ok {
+			return
+		}
+		if err := deps.Queries.Cancel(queryScope(sessionID, r.PathValue("id")), r.PathValue("queryId")); err != nil {
+			writeError(w, http.StatusNotFound, "query_not_found", "查询不存在")
+			return
+		}
+		w.WriteHeader(http.StatusNoContent)
+	})
+	mux.HandleFunc("GET /api/connections/{id}/queries/{queryId}/export.csv", func(w http.ResponseWriter, r *http.Request) {
+		sessionID, ok := requireSession(w, r, deps.Sessions)
+		if !ok {
+			return
+		}
+		w.Header().Set("Content-Type", "text/csv; charset=utf-8")
+		w.Header().Set("Content-Disposition", `attachment; filename="query-result.csv"`)
+		if err := deps.Queries.ExportCSV(queryScope(sessionID, r.PathValue("id")), r.PathValue("queryId"), w); err != nil {
+			if errors.Is(err, query.ErrQueryPending) {
+				return
+			}
+			http.Error(w, "export failed", http.StatusBadGateway)
+		}
+	})
+}
+
+func queryScope(sessionID, connectionID string) string { return sessionID + "/" + connectionID }
+
+func defaultString(value, fallback string) string {
+	if value == "" {
+		return fallback
+	}
+	return value
 }
 
 func requireSession(w http.ResponseWriter, r *http.Request, store *session.Store) (string, bool) {
