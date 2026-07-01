@@ -109,4 +109,28 @@
 .filter-action-spacer { flex: 1; }
 .filter-add { color: var(--accent); border-color: color-mix(in srgb, var(--accent) 36%, var(--line)); background: color-mix(in srgb, var(--accent) 7%, var(--surface)); }
 
+/* Data grid and footer form one calm, continuous work surface. */
+.table-grid-scroll { background: var(--surface); scrollbar-color: var(--line-strong) transparent; scrollbar-width: thin; }
+.result-grid { font: 12px/1.4 var(--font-mono); }
+.result-grid th,
+.result-grid td { height: 36px; padding: 7px 12px; border-right-color: color-mix(in srgb, var(--line) 72%, transparent); }
+.result-grid thead th { height: 44px; color: var(--ink); background: var(--surface-2); box-shadow: inset 0 -1px var(--line-strong); }
+.result-grid small { margin-top: 2px; font-size: 9px; letter-spacing: .025em; text-transform: uppercase; }
+.result-grid tbody tr:nth-child(even) td,
+.result-grid tbody tr:nth-child(even) th { background: color-mix(in srgb, var(--surface-2) 46%, var(--surface)); }
+.result-grid tbody tr:hover td,
+.result-grid tbody tr:hover th { background: var(--grid-hover); }
+.table-data-bar { background: var(--surface); box-shadow: 0 -1px 0 var(--line); }
+.table-row-tools { min-height: 42px; padding: 6px 12px; gap: 6px; background: var(--surface-2); }
+.icon-tool { border-color: transparent; background: transparent; }
+.icon-tool:hover:not(:disabled) { border-color: var(--line); background: var(--surface); }
+.table-sql-bar { min-height: 44px; padding: 7px 12px; border-bottom: 1px solid var(--line); }
+.table-sql-bar code { font-size: 11px; }
+.table-pagination { flex: 0 0 auto; gap: 5px; padding-left: 10px; border-left: 1px solid var(--line); }
+.table-pagination .icon-tool { width: 28px; height: 28px; font-size: 16px; }
+.page-input input { width: 52px; height: 28px; font-size: 12px; }
+.page-size { display: flex; align-items: center; gap: 6px; margin-left: 4px; color: var(--muted); font-size: 11px; white-space: nowrap; }
+.table-pagination select { height: 28px; padding: 0 24px 0 8px; font-size: 11px; }
+.table-status { min-height: 30px; font-size: 11px; }
+
 @media (max-width:800px) { .app-shell { grid-template-columns:0 minmax(0,1fr); }.sidebar { position:fixed; z-index:20; top:0; bottom:0; left:0; width:320px; transform:translateX(-100%); }.workspace { grid-column:2; }.query-toolbar .toolbar-separator,.transaction-state { display:none; } }

@@ -301,8 +301,8 @@ export function TableView({
       <div className="table-sql-bar">
         <code>{sql.replace(/\s+/g, ' ').trim()}</code>
         <div className="table-pagination">
-          <button type="button" className="icon-tool tiny" aria-label="首页" disabled={page <= 1 || status === 'running'} onClick={() => onPageChange(1)}>|◀</button>
-          <button type="button" className="icon-tool tiny" aria-label="上一页" disabled={page <= 1 || status === 'running'} onClick={() => onPageChange(page - 1)}>◀</button>
+          <button type="button" className="icon-tool tiny" aria-label="首页" disabled={page <= 1 || status === 'running'} onClick={() => onPageChange(1)}>«</button>
+          <button type="button" className="icon-tool tiny" aria-label="上一页" disabled={page <= 1 || status === 'running'} onClick={() => onPageChange(page - 1)}>‹</button>
           <label className="page-input">
             <input
               type="number"
@@ -312,10 +312,10 @@ export function TableView({
               onChange={(event) => onPageChange(Math.max(1, Number(event.target.value) || 1))}
             />
           </label>
-          <button type="button" className="icon-tool tiny" aria-label="下一页" disabled={!canGoNext || status === 'running'} onClick={() => onPageChange(page + 1)}>▶</button>
-          <select value={pageSize} disabled={status === 'running'} onChange={(event) => onPageSizeChange(Number(event.target.value))}>
+          <button type="button" className="icon-tool tiny" aria-label="下一页" disabled={!canGoNext || status === 'running'} onClick={() => onPageChange(page + 1)}>›</button>
+          <label className="page-size"><span>每页</span><select value={pageSize} disabled={status === 'running'} onChange={(event) => onPageSizeChange(Number(event.target.value))}>
             {[50, 100, 200, 500, 1000].map((size) => <option key={size} value={size}>{size}</option>)}
-          </select>
+          </select></label>
         </div>
       </div>
       <footer className={`execution-status table-status ${status}`} aria-live="polite"><span />{message}{truncated ? ' · 已达到结果上限' : ''}</footer>
