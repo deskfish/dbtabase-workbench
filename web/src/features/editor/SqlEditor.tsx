@@ -8,14 +8,14 @@ if (typeof self !== 'undefined') {
   self.MonacoEnvironment = {getWorker: () => new EditorWorker()}
 }
 
-export function SqlEditor({value, onChange, onExecute}: {value:string; onChange:(value:string)=>void; onExecute:()=>void}) {
+export function SqlEditor({value, onChange, onExecute, editorTheme = 'vs-dark'}: {value:string; onChange:(value:string)=>void; onExecute:()=>void; editorTheme?: 'vs-dark' | 'vs-light'}) {
   if (import.meta.env.MODE === 'test') {
     return <textarea aria-label="SQL 编辑器" value={value} onChange={(event) => onChange(event.target.value)} />
   }
   return <Editor
     height="100%"
     language="sql"
-    theme="vs-dark"
+    theme={editorTheme}
     value={value}
     onChange={(next) => onChange(next ?? '')}
     options={{fontSize:13, fontFamily:"'SFMono-Regular', Consolas, monospace", minimap:{enabled:false}, padding:{top:14}, automaticLayout:true, scrollBeyondLastLine:false}}

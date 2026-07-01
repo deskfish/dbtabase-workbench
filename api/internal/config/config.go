@@ -16,6 +16,8 @@ type Config struct {
 	AllowedCIDRs    []netip.Prefix
 	AllowedPorts    map[uint16]struct{}
 	AllowedSuffixes []string
+	RegistryPath    string
+	RegistrySecret  string
 }
 
 func Load(getenv func(string) string) (Config, error) {
@@ -55,6 +57,8 @@ func Load(getenv func(string) string) (Config, error) {
 	if value := getenv("DBW_ALLOWED_SUFFIXES"); value != "" {
 		cfg.AllowedSuffixes = splitList(value)
 	}
+	cfg.RegistryPath = stringValue(getenv("DBW_REGISTRY_PATH"), "/data/registry.db")
+	cfg.RegistrySecret = getenv("DBW_REGISTRY_SECRET")
 	return cfg, nil
 }
 

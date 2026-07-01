@@ -6,11 +6,14 @@ import (
 	"encoding/base64"
 	"sync"
 	"time"
+
+	database "dbworkbench/api/internal/db"
 )
 
 type entry struct {
 	db       *sql.DB
 	driver   string
+	config   database.ConnectionInput
 	lastUsed time.Time
 }
 
@@ -37,11 +40,11 @@ func (s *Store) CreateSession() string {
 	}
 }
 
-func (s *Store) Put(sessionID string, database *sql.DB) string {
-	return s.PutConnection(sessionID, database, "")
+func (s *Store) Put(sessionID string, dbHandle *sql.DB) string {
+	return s.PutConnection(sessionID, dbHandle, "", database.ConnectionInput{})
 }
 
-func (s *Store) PutConnection(sessionID string, database *sql.DB, driver string) string {
+func (s *Store) PutConnection(sessionID string, dbHandle *sql.DB, driver string, config database.ConnectionInput) string {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	connections, ok := s.sessions[sessionID]
@@ -51,7 +54,7 @@ func (s *Store) PutConnection(sessionID string, database *sql.DB, driver string)
 	for {
 		id := randomID()
 		if _, exists := connections[id]; !exists {
-			connections[id] = &entry{db: database, driver: driver, lastUsed: s.now()}
+			connections[id] = &entry{db: dbHandle, driver: driver, config: config, lastUsed: s.now()}
 			return id
 		}
 	}
@@ -75,15 +78,36 @@ func (s *Store) GetConnection(sessionID, connectionID string) (*sql.DB, string, 
 	return connection.db, connection.driver, true
 }
 
-func (s *Store) Get(sessionID, connectionID string) (*sql.DB, bool) {
+func (s *Store) GetConnectionConfig(sessionID, connectionID string) (database.ConnectionInput, string, bool) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	connection, ok := s.sessions[sessionID][connectionID]
 	if !ok {
-		return nil, false
+		return database.ConnectionInput{}, "", false
 	}
 	connection.lastUsed = s.now()
-	return connection.db, true
+	return connection.config, connection.config.Database, true
+}
+
+func (s *Store) ReplaceDatabase(sessionID, connectionID string, dbHandle *sql.DB, databaseName string) bool {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	connection, ok := s.sessions[sessionID][connectionID]
+	if !ok {
+		return false
+	}
+	if connection.db != nil && connection.db != dbHandle {
+		_ = connection.db.Close()
+	}
+	connection.db = dbHandle
+	connection.config.Database = databaseName
+	connection.lastUsed = s.now()
+	return true
+}
+
+func (s *Store) Get(sessionID, connectionID string) (*sql.DB, bool) {
+	dbHandle, _, ok := s.GetConnection(sessionID, connectionID)
+	return dbHandle, ok
 }
 
 func (s *Store) Delete(sessionID, connectionID string) {

@@ -14,6 +14,7 @@ import (
 	"dbworkbench/api/internal/httpapi"
 	"dbworkbench/api/internal/network"
 	"dbworkbench/api/internal/query"
+	"dbworkbench/api/internal/registry"
 	"dbworkbench/api/internal/session"
 )
 
@@ -34,10 +35,21 @@ func main() {
 	sessions := session.NewStore(30 * time.Minute)
 	queries := query.NewService(query.Limits{Timeout: cfg.QueryTimeout, PageSize: cfg.PageSize, MaxRows: cfg.MaxRows})
 	transactions := query.NewTransactionService(5 * time.Minute)
+	var registryStore *registry.Store
+	if cfg.RegistrySecret != "" {
+		registryStore, err = registry.Open(cfg.RegistryPath, cfg.RegistrySecret)
+		if err != nil {
+			log.Fatal(err)
+		}
+		defer registryStore.Close()
+	} else {
+		log.Printf("registry disabled: DBW_REGISTRY_SECRET is empty")
+	}
 	server := &http.Server{
 		Addr: cfg.Address,
 		Handler: httpapi.NewRouter(httpapi.Dependencies{
 			Sessions: sessions,
+			Registry: registryStore,
 			ValidateDestination: func(ctx context.Context, host string, port uint16) error {
 				_, err := policy.Validate(ctx, host, port)
 				return err

@@ -13,6 +13,7 @@ import (
 
 	database "dbworkbench/api/internal/db"
 	"dbworkbench/api/internal/query"
+	"dbworkbench/api/internal/registry"
 	"dbworkbench/api/internal/session"
 	"dbworkbench/api/internal/table"
 )
@@ -20,6 +21,7 @@ import (
 type Dependencies struct {
 	Ready               func() bool
 	Sessions            *session.Store
+	Registry            *registry.Store
 	ValidateDestination func(context.Context, string, uint16) error
 	OpenConnection      func(context.Context, database.ConnectionInput) (*sql.DB, error)
 	Queries             *query.Service
@@ -64,6 +66,9 @@ func NewRouter(deps Dependencies) http.Handler {
 				writeError(w, http.StatusServiceUnavailable, "connections_unavailable", "数据库连接服务不可用")
 				return
 			}
+			if input.Driver == database.PostgreSQL && input.Database == "" {
+				input.Database = "postgres"
+			}
 			ctx, cancel := context.WithTimeout(r.Context(), 10*time.Second)
 			defer cancel()
 			dbHandle, err := deps.OpenConnection(ctx, input)
@@ -71,8 +76,70 @@ func NewRouter(deps Dependencies) http.Handler {
 				writeError(w, http.StatusBadGateway, "connection_failed", "无法连接数据库")
 				return
 			}
-			connectionID := deps.Sessions.PutConnection(sessionID, dbHandle, string(input.Driver))
-			writeJSON(w, http.StatusCreated, map[string]string{"connectionId": connectionID})
+			connectionID := deps.Sessions.PutConnection(sessionID, dbHandle, string(input.Driver), input)
+			writeJSON(w, http.StatusCreated, map[string]string{"connectionId": connectionID, "database": input.Database})
+		})
+		mux.HandleFunc("GET /api/connections/{id}/databases", func(w http.ResponseWriter, r *http.Request) {
+			sessionID, ok := requireSession(w, r, deps.Sessions)
+			if !ok {
+				return
+			}
+			dbHandle, driver, found := deps.Sessions.GetConnection(sessionID, r.PathValue("id"))
+			if !found {
+				writeError(w, http.StatusNotFound, "connection_not_found", "连接不存在或已过期")
+				return
+			}
+			_, currentDatabase, _ := deps.Sessions.GetConnectionConfig(sessionID, r.PathValue("id"))
+			names, err := database.ListDatabases(r.Context(), dbHandle, database.Driver(driver))
+			if err != nil {
+				writeError(w, http.StatusBadGateway, "databases_failed", "无法读取数据库列表")
+				return
+			}
+			writeJSON(w, http.StatusOK, map[string]any{"databases": names, "current": currentDatabase})
+		})
+		mux.HandleFunc("POST /api/connections/{id}/database", func(w http.ResponseWriter, r *http.Request) {
+			sessionID, ok := requireSession(w, r, deps.Sessions)
+			if !ok {
+				return
+			}
+			connectionID := r.PathValue("id")
+			config, currentDatabase, found := deps.Sessions.GetConnectionConfig(sessionID, connectionID)
+			if !found {
+				writeError(w, http.StatusNotFound, "connection_not_found", "连接不存在或已过期")
+				return
+			}
+			var input struct {
+				Database string `json:"database"`
+			}
+			if err := decodeJSON(w, r, &input); err != nil {
+				return
+			}
+			if input.Database == "" {
+				writeError(w, http.StatusBadRequest, "database_required", "请选择目标数据库")
+				return
+			}
+			if input.Database == currentDatabase {
+				writeJSON(w, http.StatusOK, map[string]string{"database": currentDatabase})
+				return
+			}
+			if deps.OpenConnection == nil {
+				writeError(w, http.StatusServiceUnavailable, "connections_unavailable", "数据库连接服务不可用")
+				return
+			}
+			config.Database = input.Database
+			ctx, cancel := context.WithTimeout(r.Context(), 10*time.Second)
+			defer cancel()
+			dbHandle, err := deps.OpenConnection(ctx, config)
+			if err != nil {
+				writeError(w, http.StatusBadGateway, "connection_failed", "无法切换到目标数据库")
+				return
+			}
+			if !deps.Sessions.ReplaceDatabase(sessionID, connectionID, dbHandle, input.Database) {
+				_ = dbHandle.Close()
+				writeError(w, http.StatusNotFound, "connection_not_found", "连接不存在或已过期")
+				return
+			}
+			writeJSON(w, http.StatusOK, map[string]string{"database": input.Database})
 		})
 		mux.HandleFunc("DELETE /api/connections/{id}", func(w http.ResponseWriter, r *http.Request) {
 			sessionID, ok := requireSession(w, r, deps.Sessions)
@@ -105,6 +172,9 @@ func NewRouter(deps Dependencies) http.Handler {
 		if deps.Transactions != nil {
 			registerTransactionRoutes(mux, deps)
 		}
+	}
+	if deps.Registry != nil {
+		registerRegistryRoutes(mux, deps.Registry)
 	}
 	return securityHeaders(mux)
 }

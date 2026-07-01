@@ -7,6 +7,7 @@ import (
 	"testing"
 	"time"
 
+	"dbworkbench/api/internal/db"
 	"dbworkbench/api/internal/query"
 	"dbworkbench/api/internal/session"
 )
@@ -14,7 +15,7 @@ import (
 func TestDangerousQueryRequiresConfirmation(t *testing.T) {
 	store := session.NewStore(time.Minute)
 	sessionID := store.CreateSession()
-	connectionID := store.PutConnection(sessionID, nil, "postgres")
+	connectionID := store.PutConnection(sessionID, nil, "postgres", db.ConnectionInput{})
 	h := NewRouter(Dependencies{Ready: func() bool { return true }, Sessions: store, Queries: query.NewService(query.Limits{})})
 	rr := httptest.NewRecorder()
 	req := httptest.NewRequest(http.MethodPost, "/api/connections/"+connectionID+"/queries", strings.NewReader(`{"sql":"DELETE FROM invoices"}`))
@@ -29,7 +30,7 @@ func TestDangerousQueryRequiresConfirmation(t *testing.T) {
 func TestDropConfirmationMustMatchTarget(t *testing.T) {
 	store := session.NewStore(time.Minute)
 	sessionID := store.CreateSession()
-	connectionID := store.PutConnection(sessionID, nil, "postgres")
+	connectionID := store.PutConnection(sessionID, nil, "postgres", db.ConnectionInput{})
 	h := NewRouter(Dependencies{Ready: func() bool { return true }, Sessions: store, Queries: query.NewService(query.Limits{})})
 	rr := httptest.NewRecorder()
 	body := `{"sql":"DROP TABLE invoices","confirmed":true,"confirmationTarget":"other"}`

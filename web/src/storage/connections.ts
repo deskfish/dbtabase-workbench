@@ -1,21 +1,38 @@
 import { openDB } from 'idb'
-import type { EncryptedSecret } from '../crypto/vault'
 
 export type SavedConnection = {
+  /** 本地连接 ID */
   id: string
+  /** 连接名称 */
   name: string
+  /** 数据库驱动 */
   driver: 'mysql' | 'postgres'
+  /** 主机地址 */
   host: string
+  /** 端口 */
   port: number
+  /** 数据库名 */
   database: string
+  /** 用户名 */
   user: string
+  /** TLS 模式 */
   tlsMode: string
-  encryptedPassword?: EncryptedSecret
+  /** 数据库密码，仅保存在本机 IndexedDB */
+  password?: string
+  /** 最近连接时间戳 */
+  lastConnectedAt?: number
+  /** 来源团队连接 ID */
+  sourceTeamId?: string
 }
 
-const database = openDB('database-workbench', 1, {
-  upgrade(db) {
-    db.createObjectStore('connections', {keyPath: 'id'})
+const database = openDB('database-workbench', 2, {
+  upgrade(db, oldVersion) {
+    if (oldVersion > 0 && oldVersion < 2 && db.objectStoreNames.contains('connections')) {
+      db.deleteObjectStore('connections')
+    }
+    if (!db.objectStoreNames.contains('connections')) {
+      db.createObjectStore('connections', {keyPath: 'id'})
+    }
   },
 })
 
@@ -27,7 +44,20 @@ export async function saveConnection(connection: SavedConnection): Promise<void>
 export async function listConnections(): Promise<SavedConnection[]> {
   const db = await database
   const records = await db.getAll('connections') as SavedConnection[]
-  return records.sort((a, b) => a.name.localeCompare(b.name, 'zh-CN'))
+  return records.sort((a, b) => {
+    const left = a.lastConnectedAt ?? 0
+    const right = b.lastConnectedAt ?? 0
+    if (left !== right) return right - left
+    return a.name.localeCompare(b.name, 'zh-CN')
+  })
+}
+
+export async function touchConnection(id: string): Promise<void> {
+  const db = await database
+  const record = await db.get('connections', id) as SavedConnection | undefined
+  if (!record) return
+  record.lastConnectedAt = Date.now()
+  await db.put('connections', record)
 }
 
 export async function deleteConnection(id: string): Promise<void> {

@@ -41,6 +41,21 @@ func TestBuildUpdateUsesParametersAndStableOrder(t *testing.T) {
 	}
 }
 
+func TestBuildUpdateIgnoresKeyColumnsInSetClause(t *testing.T) {
+	statement, err := BuildUpdate(database.PostgreSQL, Mutation{
+		Schema: "public", Table: "people",
+		Values: map[string]any{"id": 9, "name": "Ada"},
+		Key:    map[string]any{"id": 7},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := `UPDATE "public"."people" SET "name" = $1 WHERE "id" = $2`
+	if statement.SQL != want {
+		t.Fatalf("SQL = %q", statement.SQL)
+	}
+}
+
 func TestBuildDeleteUsesMySQLPlaceholders(t *testing.T) {
 	statement, err := BuildDelete(database.MySQL, Mutation{Schema: "sales", Table: "orders", Key: map[string]any{"id": 9}})
 	if err != nil {

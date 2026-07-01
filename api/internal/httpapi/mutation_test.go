@@ -7,6 +7,7 @@ import (
 	"testing"
 	"time"
 
+	"dbworkbench/api/internal/db"
 	"dbworkbench/api/internal/query"
 	"dbworkbench/api/internal/session"
 )
@@ -14,7 +15,7 @@ import (
 func TestUpdateRowRejectsMissingUniqueKey(t *testing.T) {
 	store := session.NewStore(time.Minute)
 	sessionID := store.CreateSession()
-	connectionID := store.PutConnection(sessionID, nil, "postgres")
+	connectionID := store.PutConnection(sessionID, nil, "postgres", db.ConnectionInput{})
 	h := NewRouter(Dependencies{Ready: func() bool { return true }, Sessions: store, Transactions: query.NewTransactionService(time.Minute)})
 	body := `{"schema":"public","table":"events","values":{"name":"x"}}`
 	req := httptest.NewRequest(http.MethodPost, "/api/connections/"+connectionID+"/rows/update", strings.NewReader(body))

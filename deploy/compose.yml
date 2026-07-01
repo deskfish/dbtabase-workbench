@@ -11,7 +11,10 @@ services:
       DBW_QUERY_TIMEOUT: ${DBW_QUERY_TIMEOUT:-30s}
       DBW_PAGE_SIZE: ${DBW_PAGE_SIZE:-200}
       DBW_MAX_ROWS: ${DBW_MAX_ROWS:-10000}
-    read_only: true
+      DBW_REGISTRY_PATH: /data/registry.db
+      DBW_REGISTRY_SECRET: ${DBW_REGISTRY_SECRET:-change-me-in-production}
+    volumes:
+      - registry_data:/data
     cap_drop: [ALL]
     security_opt: [no-new-privileges:true]
     tmpfs: [/tmp]
@@ -36,10 +39,8 @@ services:
   proxy:
     image: docker.m.daocloud.io/library/caddy:2.10-alpine
     restart: unless-stopped
-    environment:
-      SITE_ADDRESS: ${SITE_ADDRESS}
     ports:
-      - "443:8443"
+      - "80:80"
     volumes:
       - ./Caddyfile:/etc/caddy/Caddyfile:ro
       - caddy_data:/data
@@ -61,3 +62,4 @@ networks:
 volumes:
   caddy_data:
   caddy_config:
+  registry_data:

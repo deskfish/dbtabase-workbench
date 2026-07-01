@@ -1,3 +1,5 @@
+import { createId } from '../../lib/id'
+
 export type HistoryEntry = {
   id: string
   sql: string
@@ -18,7 +20,7 @@ export function listHistory(): HistoryEntry[] {
 }
 
 export function addHistory(entry: NewHistoryEntry): HistoryEntry {
-  const record: HistoryEntry = {...entry, id:crypto.randomUUID(), timestamp:Date.now()}
+  const record: HistoryEntry = {...entry, id: createId(), timestamp: Date.now()}
   localStorage.setItem(KEY, JSON.stringify([record, ...listHistory()].slice(0, 500)))
   return record
 }

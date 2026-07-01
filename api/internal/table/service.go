@@ -50,15 +50,22 @@ func BuildUpdate(driver database.Driver, mutation Mutation) (Statement, error) {
 	if len(mutation.Key) == 0 {
 		return Statement{}, ErrUniqueKeyRequired
 	}
-	if len(mutation.Values) == 0 {
+	values := make(map[string]any, len(mutation.Values))
+	for name, value := range mutation.Values {
+		if _, isKey := mutation.Key[name]; isKey {
+			continue
+		}
+		values[name] = value
+	}
+	if len(values) == 0 {
 		return Statement{}, errors.New("at least one changed value is required")
 	}
 	tableName, err := qualifiedName(driver, mutation.Schema, mutation.Table)
 	if err != nil {
 		return Statement{}, err
 	}
-	args := make([]any, 0, len(mutation.Values)+len(mutation.Key))
-	sets, err := predicates(driver, mutation.Values, &args, ", ")
+	args := make([]any, 0, len(values)+len(mutation.Key))
+	sets, err := predicates(driver, values, &args, ", ")
 	if err != nil {
 		return Statement{}, err
 	}
