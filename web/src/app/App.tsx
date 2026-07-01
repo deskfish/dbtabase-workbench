@@ -8,8 +8,12 @@ import { ResultGrid } from '../features/results/ResultGrid'
 import { ConnectionDialog, type ConnectionOptions } from '../features/connections/ConnectionDialog'
 import { createVault, unlockVault } from '../crypto/vault'
 import { listConnections, saveConnection, type SavedConnection } from '../storage/connections'
+import { addHistory, listHistory, toggleFavorite, type HistoryEntry } from '../features/history/store'
+import { HistoryPanel } from '../features/history/HistoryPanel'
+import { useTransactionGuard } from '../features/editor/useTransaction'
+import { TableView } from '../features/table/TableView'
 
-export type WorkbenchAPI = Pick<APIClient, 'createSession'|'connect'|'disconnect'|'metadata'|'startQuery'|'queryResult'|'cancelQuery'|'exportURL'|'beginTransaction'|'finishTransaction'|'mutate'>
+export type WorkbenchAPI = Pick<APIClient, 'createSession'|'connect'|'disconnect'|'metadata'|'startQuery'|'queryResult'|'cancelQuery'|'exportCSV'|'beginTransaction'|'finishTransaction'|'mutate'>
 
 export function App({api, initialConnectionId = '', initialSQL = 'SELECT *\nFROM your_table\nLIMIT 200;'}: {api:WorkbenchAPI; initialConnectionId?:string; initialSQL?:string}) {
   const [connectionId, setConnectionId] = useState(initialConnectionId)
@@ -20,9 +24,13 @@ export function App({api, initialConnectionId = '', initialSQL = 'SELECT *\nFROM
   const [status, setStatus] = useState<'idle'|'running'|'error'>('idle')
   const [message, setMessage] = useState('尚未执行查询')
   const [risk, setRisk] = useState<QueryRisk | null>(null)
-  const [transactionId, setTransactionId] = useState('')
+  const transaction = useTransactionGuard()
+  const transactionId = transaction.transactionId
   const [savedConnections, setSavedConnections] = useState<SavedConnection[]>([])
   const [connectionDialog, setConnectionDialog] = useState<SavedConnection | 'new' | null>(null)
+  const [history, setHistory] = useState<HistoryEntry[]>(() => listHistory())
+  const [resultTab, setResultTab] = useState<'result'|'history'>('result')
+  const [selectedTable, setSelectedTable] = useState<DatabaseObject | null>(null)
   const connected = Boolean(connectionId)
 
   useEffect(() => { void api.createSession().catch(() => setMessage('无法建立匿名会话')) }, [api])
@@ -41,10 +49,12 @@ export function App({api, initialConnectionId = '', initialSQL = 'SELECT *\nFROM
       for (;;) {
         const page = await api.queryResult(connectionId, id)
         if (page.status === 'running') { await new Promise((resolve) => setTimeout(resolve, 150)); continue }
-        setResult(page); setStatus('idle'); setMessage(`完成 · ${page.rows?.length ?? 0} 行 · ${page.durationMs} ms`); break
+        setResult(page); setStatus('idle'); setResultTab('result'); setMessage(`完成 · ${page.rows?.length ?? 0} 行 · ${page.durationMs} ms`)
+        addHistory({sql, connectionName:'当前连接', durationMs:page.durationMs, status:'success', affectedRows:page.affectedRows}); setHistory(listHistory()); break
       }
     } catch (error) {
       setStatus('error'); setMessage(error instanceof Error ? error.message : '查询执行失败')
+      addHistory({sql, connectionName:'当前连接', status:'error'}); setHistory(listHistory())
     }
   }, [api, connectionId, sql, transactionId])
 
@@ -76,6 +86,14 @@ export function App({api, initialConnectionId = '', initialSQL = 'SELECT *\nFROM
     }
   }
 
+  async function exportResult() {
+    if (!result) return
+    const blob = await api.exportCSV(connectionId, result.queryId)
+    const url = URL.createObjectURL(blob)
+    const anchor = document.createElement('a'); anchor.href = url; anchor.download = 'query-result.csv'; anchor.click()
+    URL.revokeObjectURL(url)
+  }
+
   return <div className="app-shell">
     <a className="skip-link" href="#sql-editor">跳到 SQL 编辑器</a>
     <header className="topbar">
@@ -85,7 +103,7 @@ export function App({api, initialConnectionId = '', initialSQL = 'SELECT *\nFROM
     <aside className="sidebar" aria-label="数据库导航">
       <div className="panel-heading"><div><span>资源管理器</span><small>{objects.filter((item) => item.kind === 'table').length} 张表</small></div><button type="button" aria-label="新建连接" className="icon-button" onClick={() => setConnectionDialog('new')}>＋</button></div>
       {!connected && savedConnections.length > 0 && <div className="saved-connections"><span>已保存连接</span>{savedConnections.map((saved) => <button type="button" key={saved.id} onClick={() => setConnectionDialog(saved)}><i className={saved.driver} /><b>{saved.name}</b><small>{saved.host}:{saved.port}</small></button>)}</div>}
-      <ObjectTree objects={objects} onSelect={(object) => object.kind === 'table' && setSQL(`SELECT *\nFROM ${object.schema ? object.schema + '.' : ''}${object.name}\nLIMIT 200;`)} />
+      <ObjectTree objects={objects} onSelect={(object) => { if (object.kind === 'table') { setSelectedTable(object); setSQL(`SELECT *\nFROM ${object.schema ? object.schema + '.' : ''}${object.name}\nLIMIT 200;`) } }} />
     </aside>
     <main className="workspace">
       <div className="status-rail" aria-hidden="true" />
@@ -94,15 +112,15 @@ export function App({api, initialConnectionId = '', initialSQL = 'SELECT *\nFROM
         <button type="button" aria-label="执行 SQL" className="button primary" onClick={execute} disabled={!connected || status === 'running'}>▶ 执行 SQL</button>
         <button type="button" aria-label="停止查询" className="button ghost" disabled={!queryId || status !== 'running'} onClick={() => void api.cancelQuery(connectionId, queryId)}>■ 停止</button>
         <span className="toolbar-separator" />
-        <button type="button" className="button ghost" onClick={async () => setTransactionId(await api.beginTransaction(connectionId))} disabled={!connected || Boolean(transactionId)}>开始事务</button>
-        <button type="button" className="button ghost" onClick={async () => {await api.finishTransaction(connectionId, transactionId, 'commit'); setTransactionId('')}} disabled={!transactionId}>提交</button>
-        <button type="button" className="button ghost" onClick={async () => {await api.finishTransaction(connectionId, transactionId, 'rollback'); setTransactionId('')}} disabled={!transactionId}>回滚</button>
+        <button type="button" className="button ghost" onClick={async () => transaction.open(await api.beginTransaction(connectionId))} disabled={!connected || Boolean(transactionId)}>开始事务</button>
+        <button type="button" className="button ghost" onClick={async () => {await api.finishTransaction(connectionId, transactionId, 'commit'); transaction.close()}} disabled={!transactionId}>提交</button>
+        <button type="button" className="button ghost" onClick={async () => {await api.finishTransaction(connectionId, transactionId, 'rollback'); transaction.close()}} disabled={!transactionId}>回滚</button>
         <span className={`transaction-state ${transactionId ? 'open' : ''}`}>{transactionLabel}</span>
       </div>
       <section id="sql-editor" className="editor-pane" aria-label="SQL 编辑区"><SqlEditor value={sql} onChange={setSQL} onExecute={execute} /></section>
       <section className="results-pane" aria-label="查询结果">
-        <div className="results-tabs"><button className="active">结果</button><button>消息</button><span /><a className={!result ? 'disabled' : ''} href={result ? api.exportURL(connectionId, result.queryId) : undefined}>导出 CSV</a></div>
-        <ResultGrid columns={columns} rows={rows} />
+        <div className="results-tabs"><button className={resultTab === 'result' ? 'active' : ''} onClick={()=>setResultTab('result')}>结果</button><button className={resultTab === 'history' ? 'active' : ''} onClick={()=>setResultTab('history')}>历史</button><span /><button className={!result ? 'disabled' : ''} disabled={!result} onClick={()=>void exportResult()}>导出 CSV</button></div>
+        {resultTab === 'history' ? <HistoryPanel entries={history} onSelect={(value)=>{setSQL(value);setResultTab('result')}} onFavorite={(id)=>{toggleFavorite(id);setHistory(listHistory())}} /> : selectedTable && result ? <TableView schema={selectedTable.schema} table={selectedTable.name} columns={columns} rows={rows} uniqueKey={objects.filter((object)=>object.kind === 'key' && object.schema === selectedTable.schema && object.parent === selectedTable.name).map((object)=>object.name)} onMutate={async (operation,input)=>{await api.mutate(connectionId,operation,{...input,transactionId:transactionId||undefined}); await run()}} /> : <ResultGrid columns={columns} rows={rows} />}
         <footer className={`execution-status ${status}`} aria-live="polite"><span />{message}{result?.truncated ? ' · 已达到结果上限' : ''}</footer>
       </section>
     </main>

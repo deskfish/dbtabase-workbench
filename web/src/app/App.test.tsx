@@ -12,7 +12,7 @@ function fakeAPI(): WorkbenchAPI {
     startQuery: vi.fn().mockResolvedValue('query-1'),
     queryResult: vi.fn().mockResolvedValue({queryId:'query-1', columns:[{name:'id'},{name:'name'}], rows:[[1,'Ada']], durationMs:4}),
     cancelQuery: vi.fn().mockResolvedValue(undefined),
-    exportURL: vi.fn().mockReturnValue('/export.csv'),
+    exportCSV: vi.fn().mockResolvedValue(new Blob()),
     beginTransaction: vi.fn().mockResolvedValue('tx-1'),
     finishTransaction: vi.fn().mockResolvedValue(undefined),
     mutate: vi.fn().mockResolvedValue(undefined),

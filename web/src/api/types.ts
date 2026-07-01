@@ -9,7 +9,7 @@ export type ConnectionInput = {
 }
 
 export type DatabaseObject = {
-  kind: 'table' | 'column' | 'view' | 'index'
+  kind: 'table' | 'column' | 'view' | 'index' | 'key'
   catalog?: string
   schema?: string
   name: string

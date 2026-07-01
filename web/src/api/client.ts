@@ -51,6 +51,15 @@ export class APIClient {
     return `${this.baseURL}/api/connections/${encodeURIComponent(connectionId)}/queries/${encodeURIComponent(queryId)}/export.csv`
   }
 
+  async exportCSV(connectionId: string, queryId: string): Promise<Blob> {
+    if (!this.sessionId) throw new APIError(401, 'session_required', '匿名会话尚未建立')
+    const response = await this.fetcher(`${this.baseURL}/api/connections/${encodeURIComponent(connectionId)}/queries/${encodeURIComponent(queryId)}/export.csv`, {
+      headers: {'X-Session-ID': this.sessionId, 'Accept':'text/csv'},
+    })
+    if (!response.ok) throw new APIError(response.status, 'export_failed', '导出失败')
+    return response.blob()
+  }
+
   async beginTransaction(connectionId: string): Promise<string> {
     const result = await this.request<{transactionId:string}>(`/api/connections/${encodeURIComponent(connectionId)}/transactions`, {method:'POST'})
     return result.transactionId
