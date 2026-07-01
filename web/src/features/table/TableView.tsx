@@ -5,6 +5,7 @@ import { emptyDraft, type TableDraft, type TableFilterRule, type TableSort } fro
 import { buildInsertValues, buildRowKey, buildRowUpdate, coerceCellValue, compactDraft, hasEffectiveDraftChanges, rowToRecord, valuesEqual } from './tableMutations'
 import { isFilterRuleReady } from './tableQuery'
 import { TableFilterBuilder } from './TableFilterBuilder'
+import { Icon } from '../ui/Icon'
 
 type Column = {name: string; dataType?: string}
 
@@ -216,11 +217,11 @@ export function TableView({
 
     <div className="table-view-head">
       <div className="table-view-toolbar">
-        <button type="button" className={`icon-tool ${showFilter ? 'active' : ''}`} aria-label="筛选" title="筛选" onClick={onToggleFilter}>⛃</button>
+        <button type="button" className={`icon-tool ${showFilter ? 'active' : ''}`} aria-label="筛选" title="筛选" onClick={onToggleFilter}><Icon name="filter" /></button>
         {activeFilterCount > 0 && <span className="table-filter-badge">{activeFilterCount} 条筛选</span>}
         {sort && <span className="table-sort-badge">{sort.column} {sort.direction === 'asc' ? '↑' : '↓'}</span>}
         <span className="table-toolbar-spacer" />
-        <button type="button" className="button ghost compact" disabled={rows.length === 0} onClick={onExport}>导出 CSV</button>
+        <button type="button" className="button ghost compact button-with-icon" disabled={rows.length === 0} onClick={onExport}><Icon name="download" />导出 CSV</button>
       </div>
 
       {showFilter && <TableFilterBuilder
@@ -291,18 +292,18 @@ export function TableView({
 
     <div className="table-data-bar">
       <div className="table-row-tools">
-        <button type="button" className="icon-tool" aria-label="新增行" title="新增行" disabled={!editable} onClick={addRow}>＋</button>
-        <button type="button" className="icon-tool" aria-label="删除行" title="删除行" disabled={!editable || selectedRow === null} onClick={deleteSelectedRow}>－</button>
-        <button type="button" className="icon-tool" aria-label="应用修改" title="应用修改" disabled={!editable || !dirty} onClick={() => void applyDraft()}>✓</button>
-        <button type="button" className="icon-tool" aria-label="放弃修改" title="放弃修改" disabled={!dirty} onClick={onDiscard}>✕</button>
-        <button type="button" className="icon-tool" aria-label="刷新" title="刷新" disabled={status === 'running'} onClick={onRefresh}>↻</button>
-        <button type="button" className="icon-tool" aria-label="停止" title="停止" disabled={status !== 'running'} onClick={onStop}>■</button>
+        <button type="button" className="icon-tool" aria-label="新增行" title="新增行" disabled={!editable} onClick={addRow}><Icon name="plus" /></button>
+        <button type="button" className="icon-tool" aria-label="删除行" title="删除行" disabled={!editable || selectedRow === null} onClick={deleteSelectedRow}><Icon name="minus" /></button>
+        <button type="button" className="icon-tool" aria-label="应用修改" title="应用修改" disabled={!editable || !dirty} onClick={() => void applyDraft()}><Icon name="check" /></button>
+        <button type="button" className="icon-tool" aria-label="放弃修改" title="放弃修改" disabled={!dirty} onClick={onDiscard}><Icon name="close" /></button>
+        <button type="button" className="icon-tool" aria-label="刷新" title="刷新" disabled={status === 'running'} onClick={onRefresh}><Icon name="refresh" /></button>
+        <button type="button" className="icon-tool" aria-label="停止" title="停止" disabled={status !== 'running'} onClick={onStop}><Icon name="stop" /></button>
       </div>
       <div className="table-sql-bar">
         <code>{sql.replace(/\s+/g, ' ').trim()}</code>
         <div className="table-pagination">
-          <button type="button" className="icon-tool tiny" aria-label="首页" disabled={page <= 1 || status === 'running'} onClick={() => onPageChange(1)}>«</button>
-          <button type="button" className="icon-tool tiny" aria-label="上一页" disabled={page <= 1 || status === 'running'} onClick={() => onPageChange(page - 1)}>‹</button>
+          <button type="button" className="icon-tool tiny" aria-label="首页" disabled={page <= 1 || status === 'running'} onClick={() => onPageChange(1)}><Icon name="chevrons-left" /></button>
+          <button type="button" className="icon-tool tiny" aria-label="上一页" disabled={page <= 1 || status === 'running'} onClick={() => onPageChange(page - 1)}><Icon name="chevron-left" /></button>
           <label className="page-input">
             <input
               type="number"
@@ -312,7 +313,7 @@ export function TableView({
               onChange={(event) => onPageChange(Math.max(1, Number(event.target.value) || 1))}
             />
           </label>
-          <button type="button" className="icon-tool tiny" aria-label="下一页" disabled={!canGoNext || status === 'running'} onClick={() => onPageChange(page + 1)}>›</button>
+          <button type="button" className="icon-tool tiny" aria-label="下一页" disabled={!canGoNext || status === 'running'} onClick={() => onPageChange(page + 1)}><Icon name="chevron-right" /></button>
           <label className="page-size"><span>每页</span><select value={pageSize} disabled={status === 'running'} onChange={(event) => onPageSizeChange(Number(event.target.value))}>
             {[50, 100, 200, 500, 1000].map((size) => <option key={size} value={size}>{size}</option>)}
           </select></label>

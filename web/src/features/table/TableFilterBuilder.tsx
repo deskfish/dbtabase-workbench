@@ -1,5 +1,7 @@
 import { useEffect, useState } from 'react'
 import { FILTER_OPERATORS, createEmptyFilterRule, normalizeFilterRules, type FilterJoin, type FilterOperator, type TableFilterRule } from './tableViewState'
+import { SelectControl } from '../ui/SelectControl'
+import { Icon } from '../ui/Icon'
 
 export function TableFilterBuilder({
   columns,
@@ -72,12 +74,8 @@ export function TableFilterBuilder({
             <label className="col-check filter-check" title="启用此条件">
               <input type="checkbox" checked={rule.enabled} onChange={(event) => patchRule(rule.id, {enabled: event.target.checked})} />
             </label>
-            <select className="col-field" value={rule.column} onChange={(event) => patchRule(rule.id, {column: event.target.value})}>
-              {columns.map((column) => <option key={column.name} value={column.name}>{column.name}</option>)}
-            </select>
-            <select className="col-op" value={rule.operator} onChange={(event) => patchRule(rule.id, {operator: event.target.value as FilterOperator})}>
-              {FILTER_OPERATORS.map((item) => <option key={item.value} value={item.value}>{item.label}</option>)}
-            </select>
+            <div className="col-field"><SelectControl ariaLabel={`字段 ${index + 1}`} value={rule.column} options={columns.map((column) => ({value: column.name, label: column.name}))} onChange={(value) => patchRule(rule.id, {column: value})} /></div>
+            <div className="col-op"><SelectControl ariaLabel={`运算符 ${index + 1}`} value={rule.operator} options={FILTER_OPERATORS} onChange={(value) => patchRule(rule.id, {operator: value as FilterOperator})} /></div>
             <div className="col-value">
               {needsValue
                 ? <input value={rule.value} placeholder="输入筛选值" onChange={(event) => patchRule(rule.id, {value: event.target.value})} />
@@ -102,7 +100,7 @@ export function TableFilterBuilder({
                 title="删除条件"
                 disabled={draft.length <= 1}
                 onClick={() => removeRule(rule.id)}
-              >－</button>
+              ><Icon name="minus" /></button>
             </div>
           </div>
         })}
@@ -110,7 +108,7 @@ export function TableFilterBuilder({
     </div>
 
     <div className="table-filter-actions">
-      <button type="button" className="button compact filter-add" onClick={addRule}>＋ 添加条件</button>
+      <button type="button" className="button compact filter-add button-with-icon" onClick={addRule}><Icon name="plus" />添加条件</button>
       <span className="filter-action-spacer" />
       <button type="button" className="button compact" onClick={clearDraft}>清空条件</button>
       <button type="button" className="button primary compact" onClick={applyDraft}>应用筛选</button>
