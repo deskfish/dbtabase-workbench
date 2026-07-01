@@ -273,6 +273,10 @@ FROM team_connections WHERE id = ?
 }
 
 func (s *Store) ImportTeamToPersonal(ctx context.Context, nickname, teamID string) (ConnectionRecord, error) {
+	return s.CopyTeamToPersonal(ctx, nickname, teamID)
+}
+
+func (s *Store) CopyTeamToPersonal(ctx context.Context, nickname, teamID string) (ConnectionRecord, error) {
 	owner, err := normalizeNickname(nickname)
 	if err != nil {
 		return ConnectionRecord{}, err
@@ -281,7 +285,7 @@ func (s *Store) ImportTeamToPersonal(ctx context.Context, nickname, teamID strin
 	if err != nil {
 		return ConnectionRecord{}, err
 	}
-	personalID := fmt.Sprintf("import:%s:%s:%d", owner, teamID, time.Now().UnixMilli())
+	personalID := fmt.Sprintf("team-copy:%s:%s", owner, teamID)
 	record := ConnectionRecord{
 		ID:           personalID,
 		Name:         team.Name,

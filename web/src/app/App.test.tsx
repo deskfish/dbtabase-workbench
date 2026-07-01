@@ -33,7 +33,7 @@ function fakeAPI(): WorkbenchAPI {
     migratePersonalConnections: vi.fn().mockResolvedValue([]),
     listTeamConnections: vi.fn().mockResolvedValue([]),
     shareConnectionToTeam: vi.fn().mockResolvedValue({}),
-    importTeamConnection: vi.fn().mockResolvedValue({}),
+    copyTeamConnection: vi.fn().mockResolvedValue({}),
   }
 }
 

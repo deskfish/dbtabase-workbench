@@ -11,7 +11,7 @@ import { ConnectionSidebar } from '../features/connections/ConnectionSidebar'
 import { ProfileDialog } from '../features/connections/ProfileDialog'
 import { listConnections, type SavedConnection } from '../storage/connections'
 import {
-  importTeamConnection,
+  copyTeamConnection,
   listTeamConnections,
   persistConnection,
   removeConnection,
@@ -377,23 +377,25 @@ export function App({api, sessionBootstrap, initialConnectionId = '', initialSQL
     }
   }
 
-  async function importTeamConnectionToPersonal(team: RegistryConnection) {
+  async function copyTeamConnectionToPersonal(teamId: string) {
     if (!nickname.trim()) {
       setProfileDialog('setup')
       return
     }
+    const team = teamConnections.find(item=>item.id===teamId)
+    if (!team) return
     if (isTeamConnectionImported(savedConnections, team)) {
-      updateTab(activeTabId, {message: `「${team.name}」已在个人连接中（${team.host}:${team.port}）`})
+      updateTab(activeTabId, {message: `「${team.name}」已在个人连接中`})
       return
     }
     try {
-      await importTeamConnection(api, nickname, team.id)
+      await copyTeamConnection(api, nickname, team.id)
       await refreshConnections()
-      updateTab(activeTabId, {message: `已导入团队连接「${team.name}」到个人列表`})
+      updateTab(activeTabId, {message: `已复制团队连接「${team.name}」到个人列表`})
     } catch (error) {
       updateTab(activeTabId, {
         status: 'error',
-        message: error instanceof Error ? error.message : '导入团队连接失败',
+        message: error instanceof Error ? error.message : '复制团队连接失败',
       })
     }
   }
@@ -485,7 +487,7 @@ export function App({api, sessionBootstrap, initialConnectionId = '', initialSQL
       onEditConnection={(saved) => setConnectionDialog(saved)}
       onDeleteConnection={(saved) => void removeSavedConnection(saved)}
       onShareConnectionToTeam={(saved) => void handleShareConnectionToTeam(saved)}
-      onImportTeamConnection={(team) => void importTeamConnectionToPersonal(team)}
+      onCopyTeamConnection={(teamId) => void copyTeamConnectionToPersonal(teamId)}
       onSwitchDatabase={(database) => void switchDatabase(database)}
       onOpenTable={(table) => void loadTableData(table)}
       onNewQueryFromTable={(table) => openQueryTab(defaultSelectSQL(table, activeConnection?.driver ?? 'postgres'), `${qualifiedTableName(table)} · 查询`)}

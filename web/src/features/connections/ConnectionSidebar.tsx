@@ -2,17 +2,11 @@ import { useState } from 'react'
 import type { DatabaseObject } from '../../api/types'
 import type { SavedConnection } from '../../storage/connections'
 import type { RegistryConnection } from '../../storage/registryTypes'
-import { isTeamConnectionImported } from '../../storage/teamConnectionMatch'
 import { ContextMenu, type ContextMenuItem } from '../ui/ContextMenu'
 import { DatabaseSwitcher } from './DatabaseSwitcher'
 import { ObjectTree } from '../explorer/ObjectTree'
 import { Icon } from '../ui/Icon'
-
-const TEAM_PANEL_KEY = 'dbw-team-open'
-
-function readTeamPanelOpen(): boolean {
-  return localStorage.getItem(TEAM_PANEL_KEY) === '1'
-}
+import { TeamConnectionsDialog } from './TeamConnectionsDialog'
 
 export function ConnectionSidebar({
   nickname,
@@ -32,7 +26,7 @@ export function ConnectionSidebar({
   onEditConnection,
   onDeleteConnection,
   onShareConnectionToTeam,
-  onImportTeamConnection,
+  onCopyTeamConnection,
   onSwitchDatabase,
   onOpenTable,
   onNewQueryFromTable,
@@ -59,7 +53,7 @@ export function ConnectionSidebar({
   onEditConnection: (saved: SavedConnection) => void
   onDeleteConnection: (saved: SavedConnection) => void
   onShareConnectionToTeam: (saved: SavedConnection) => void
-  onImportTeamConnection: (team: RegistryConnection) => void
+  onCopyTeamConnection: (teamId: string) => void
   onSwitchDatabase: (database: string) => void
   onOpenTable: (table: DatabaseObject) => void
   onNewQueryFromTable: (table: DatabaseObject) => void
@@ -70,7 +64,7 @@ export function ConnectionSidebar({
   selectedTableKey?: string
 }) {
   const tableCount = objects.filter((item) => item.kind === 'table').length
-  const [teamOpen, setTeamOpen] = useState(readTeamPanelOpen)
+  const [teamOpen, setTeamOpen] = useState(false)
   const [connectionMenu, setConnectionMenu] = useState<{saved: SavedConnection; x: number; y: number} | null>(null)
   const connectionMenuItems: ContextMenuItem[] = connectionMenu
     ? [
@@ -80,14 +74,6 @@ export function ConnectionSidebar({
       {label: '删除连接', action: () => onDeleteConnection(connectionMenu.saved)},
     ]
     : []
-
-  function toggleTeamPanel() {
-    setTeamOpen((open) => {
-      const next = !open
-      localStorage.setItem(TEAM_PANEL_KEY, next ? '1' : '0')
-      return next
-    })
-  }
 
   return <aside className="sidebar navicat-sidebar" aria-label="连接与对象导航">
     <div className="sidebar-profile">
@@ -100,45 +86,10 @@ export function ConnectionSidebar({
       </button>
     </div>
 
-    <div className={`connection-panel team-panel ${teamOpen ? '' : 'collapsed'}`}>
-      <button type="button" className="panel-heading connection-panel-heading panel-toggle" aria-expanded={teamOpen} onClick={toggleTeamPanel}>
-        <span className="panel-expand" aria-hidden="true"><Icon name={teamOpen ? 'chevron-down' : 'chevron-right'} /></span>
-        <div>
-          <span>团队连接</span>
-          <small>{teamOpen ? '导入后可自行编辑维护' : '点击展开查看团队共享'}</small>
-        </div>
-        {teamConnections.length > 0 && <span className="panel-count">{teamConnections.length}</span>}
-      </button>
-      {teamOpen && <div className="connection-list team-connection-list" role="list">
-        {teamConnections.length === 0 && <div className="empty-state compact">暂无团队共享连接</div>}
-        {teamConnections.map((team) => {
-          const imported = isTeamConnectionImported(savedConnections, team)
-          return <div key={team.id} className="connection-item team-connection-item" role="listitem">
-            <div className="connection-main team-connection-main">
-              <span className="connection-dot team" aria-hidden="true" />
-              <span className="connection-copy">
-                <strong>{team.name}</strong>
-                <small>{team.driver === 'postgres' ? 'PostgreSQL' : 'MySQL'} · {team.host}:{team.port}</small>
-                <small>共享人 {team.sharedBy ?? '未知'} · {team.database}</small>
-              </span>
-            </div>
-            <div className="connection-actions">
-              <button
-                type="button"
-                className="button ghost compact team-import-button"
-                disabled={imported}
-                onClick={() => onImportTeamConnection(team)}
-              >{imported ? '已导入' : '导入'}</button>
-            </div>
-          </div>
-        })}
-      </div>}
-    </div>
-
     <div className="connection-panel">
       <div className="panel-heading connection-panel-heading">
-        <div><span>我的连接</span><small>点击切换 · 右键共享到团队</small></div>
-        <button type="button" aria-label="新建连接" className="icon-button" onClick={onNewConnection}><Icon name="plus" /></button>
+        <div><span>个人连接</span><small>{savedConnections.length} 个连接</small></div>
+        <div className="connection-heading-actions"><button type="button" className="team-entry" onClick={()=>setTeamOpen(true)}>团队连接 <b>{teamConnections.length}</b></button><button type="button" aria-label="新建连接" className="icon-button" onClick={onNewConnection}><Icon name="plus" /></button></div>
       </div>
       <div className="connection-list" role="list">
         {savedConnections.length === 0 && <div className="empty-state compact">还没有保存的连接，请从右上角新建</div>}
@@ -172,6 +123,7 @@ export function ConnectionSidebar({
               {active && connected && !busy && <span className="connection-status online">已连接</span>}
             </button>
             <div className="connection-actions">
+              <button type="button" aria-label={`分享 ${saved.name} 到团队`} className="button compact share-button" onClick={() => onShareConnectionToTeam(saved)}>分享</button>
               <button type="button" aria-label={`编辑 ${saved.name}`} className="icon-button tiny" onClick={() => onEditConnection(saved)}><Icon name="edit" /></button>
               <button type="button" aria-label={`删除 ${saved.name}`} className="icon-button tiny danger" onClick={() => onDeleteConnection(saved)}><Icon name="trash" /></button>
             </div>
@@ -209,5 +161,6 @@ export function ConnectionSidebar({
     </div>
 
     {connectionMenu && <ContextMenu x={connectionMenu.x} y={connectionMenu.y} items={connectionMenuItems} onClose={() => setConnectionMenu(null)} />}
+    {teamOpen && <TeamConnectionsDialog connections={teamConnections} personalConnections={savedConnections} onCopy={onCopyTeamConnection} onClose={()=>setTeamOpen(false)}/>} 
   </aside>
 }

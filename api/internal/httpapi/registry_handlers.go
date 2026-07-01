@@ -118,6 +118,13 @@ func registerRegistryRoutes(mux *http.ServeMux, store *registry.Store) {
 		}
 		writeJSON(w, http.StatusCreated, map[string]any{"connection": item})
 	})
+	mux.HandleFunc("POST /api/registry/team/connections/{id}/copy", func(w http.ResponseWriter, r *http.Request) {
+		nickname, ok := requireNickname(w, r)
+		if !ok { return }
+		item, err := store.CopyTeamToPersonal(r.Context(), nickname, r.PathValue("id"))
+		if err != nil { writeRegistryError(w, err); return }
+		writeJSON(w, http.StatusCreated, map[string]any{"connection": item})
+	})
 }
 
 func requireNickname(w http.ResponseWriter, r *http.Request) (string, bool) {

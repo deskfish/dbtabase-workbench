@@ -146,8 +146,8 @@ export class APIClient {
     return result.connection
   }
 
-  async importTeamConnection(nickname: string, teamConnectionId: string): Promise<RegistryConnection> {
-    const result = await this.request<{connection: RegistryConnection}>(`/api/registry/team/connections/${encodeURIComponent(teamConnectionId)}/import`, {
+  async copyTeamConnection(nickname: string, teamConnectionId: string): Promise<RegistryConnection> {
+    const result = await this.request<{connection: RegistryConnection}>(`/api/registry/team/connections/${encodeURIComponent(teamConnectionId)}/copy`, {
       method: 'POST',
       headers: this.registryHeaders(nickname),
     })

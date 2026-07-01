@@ -8,5 +8,5 @@ export type ConnectionRegistryAPI = {
   migratePersonalConnections(nickname: string, connections: RegistryConnection[]): Promise<RegistryConnection[]>
   listTeamConnections(nickname: string): Promise<RegistryConnection[]>
   shareConnectionToTeam(nickname: string, personalConnectionId: string): Promise<RegistryConnection>
-  importTeamConnection(nickname: string, teamConnectionId: string): Promise<RegistryConnection>
+  copyTeamConnection(nickname: string, teamConnectionId: string): Promise<RegistryConnection>
 }

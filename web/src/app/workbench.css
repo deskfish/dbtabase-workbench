@@ -190,5 +190,20 @@
 .panel-expand { display: grid; place-items: center; }
 .tab i { display: grid; place-items: center; }
 .tab i .ui-icon { width: 14px; height: 14px; }
+.connection-heading-actions { display:flex!important; flex-direction:row!important; align-items:center; gap:6px; }
+.team-entry { height:30px; padding:0 10px; border:1px solid var(--line); border-radius:6px; color:var(--muted); background:var(--surface); cursor:pointer; font-size:11px; }
+.team-entry:hover { color:var(--ink); border-color:var(--line-strong); }
+.team-entry b { margin-left:4px; color:var(--accent); }
+.share-button { opacity:0; color:var(--accent); border-color:transparent; background:transparent; }
+.connection-item:hover .share-button,.share-button:focus-visible { opacity:1; }
+.team-dialog { width:min(860px,92vw); padding:0; overflow:hidden; }
+.team-dialog-head { display:flex; justify-content:space-between; align-items:flex-start; padding:22px 24px 16px; border-bottom:1px solid var(--line); }
+.team-dialog-head h2 { margin:0 0 6px; }.team-dialog-head p { margin:0; }
+.team-dialog-toolbar { display:flex; align-items:center; gap:14px; padding:14px 24px; background:var(--surface-2); }
+.team-dialog-toolbar input { flex:1; height:36px; padding:0 12px; border:1px solid var(--line); border-radius:6px; color:var(--ink); background:var(--surface); }
+.team-dialog-toolbar span { color:var(--muted); font-size:12px; }
+.team-table { max-height:52vh; overflow:auto; padding:8px 16px 18px; }
+.team-row { display:grid; grid-template-columns:10px minmax(0,1fr) 100px 112px; gap:12px; align-items:center; min-height:62px; padding:8px 10px; border-bottom:1px solid var(--line); }
+.team-row-main { display:grid; gap:4px; min-width:0; }.team-row-main strong,.team-row-main small { overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }.team-row-main small,.team-owner { color:var(--muted); font-size:11px; }
 
 @media (max-width:800px) { .app-shell { grid-template-columns:0 minmax(0,1fr); }.sidebar { position:fixed; z-index:20; top:0; bottom:0; left:0; width:320px; transform:translateX(-100%); }.workspace { grid-column:2; }.query-toolbar .toolbar-separator,.transaction-state { display:none; } }

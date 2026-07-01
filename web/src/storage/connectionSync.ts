@@ -54,7 +54,7 @@ export async function shareConnectionToTeam(api: ConnectionRegistryAPI, nickname
   return api.shareConnectionToTeam(nickname, personalConnectionId)
 }
 
-export async function importTeamConnection(api: ConnectionRegistryAPI, nickname: string, teamConnectionId: string) {
-  const imported = await api.importTeamConnection(nickname, teamConnectionId)
-  return toSavedConnection(imported)
+export async function copyTeamConnection(api: ConnectionRegistryAPI, nickname: string, teamConnectionId: string) {
+  const copied = await api.copyTeamConnection(nickname, teamConnectionId)
+  return toSavedConnection(copied)
 }

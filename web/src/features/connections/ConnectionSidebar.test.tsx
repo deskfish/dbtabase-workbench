@@ -36,7 +36,7 @@ it('renders saved connections and triggers selection', async () => {
     onEditConnection={() => {}}
     onDeleteConnection={() => {}}
     onShareConnectionToTeam={() => {}}
-    onImportTeamConnection={() => {}}
+    onCopyTeamConnection={() => {}}
     onSwitchDatabase={() => {}}
     onOpenTable={() => {}}
     onNewQueryFromTable={() => {}}
