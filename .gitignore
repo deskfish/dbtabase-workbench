@@ -7,3 +7,5 @@ playwright-report/
 test-results/
 *.log
 *.tsbuildinfo
+/api/server
+/work/

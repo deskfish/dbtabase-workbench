@@ -5,6 +5,8 @@ import (
 	"log"
 	"net/http"
 	"os"
+	"os/signal"
+	"syscall"
 	"time"
 
 	"dbworkbench/api/internal/config"
@@ -16,6 +18,14 @@ import (
 )
 
 func main() {
+	if len(os.Args) > 1 && os.Args[1] == "--healthcheck" {
+		response, err := http.Get("http://127.0.0.1:8080/health/ready")
+		if err != nil || response.StatusCode != http.StatusOK {
+			os.Exit(1)
+		}
+		_ = response.Body.Close()
+		return
+	}
 	cfg, err := config.Load(os.Getenv)
 	if err != nil {
 		log.Fatal(err)
@@ -40,7 +50,18 @@ func main() {
 		IdleTimeout:       60 * time.Second,
 	}
 	log.Printf("database workbench API listening on %s", cfg.Address)
-	if err := server.ListenAndServe(); err != nil && err != http.ErrServerClosed {
-		log.Fatal(err)
+	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+	defer stop()
+	go func() {
+		if err := server.ListenAndServe(); err != nil && err != http.ErrServerClosed {
+			log.Printf("server stopped unexpectedly: %v", err)
+			stop()
+		}
+	}()
+	<-ctx.Done()
+	shutdownCtx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+	if err := server.Shutdown(shutdownCtx); err != nil {
+		log.Printf("graceful shutdown failed: %v", err)
 	}
 }

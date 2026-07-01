@@ -1,0 +1,63 @@
+services:
+  api:
+    build:
+      context: ../api
+    restart: unless-stopped
+    environment:
+      DBW_ADDRESS: :8080
+      DBW_ALLOWED_CIDRS: ${DBW_ALLOWED_CIDRS}
+      DBW_ALLOWED_PORTS: ${DBW_ALLOWED_PORTS:-3306,5432}
+      DBW_ALLOWED_SUFFIXES: ${DBW_ALLOWED_SUFFIXES:-}
+      DBW_QUERY_TIMEOUT: ${DBW_QUERY_TIMEOUT:-30s}
+      DBW_PAGE_SIZE: ${DBW_PAGE_SIZE:-200}
+      DBW_MAX_ROWS: ${DBW_MAX_ROWS:-10000}
+    read_only: true
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+    tmpfs: [/tmp]
+    healthcheck:
+      test: [CMD, /dbworkbench, --healthcheck]
+      interval: 15s
+      timeout: 3s
+      retries: 5
+    networks: [workbench]
+
+  web:
+    build:
+      context: ../web
+    restart: unless-stopped
+    read_only: true
+    cap_drop: [ALL]
+    cap_add: [NET_BIND_SERVICE]
+    security_opt: [no-new-privileges:true]
+    tmpfs: [/config, /data]
+    networks: [workbench]
+
+  proxy:
+    image: docker.m.daocloud.io/library/caddy:2.10-alpine
+    restart: unless-stopped
+    environment:
+      SITE_ADDRESS: ${SITE_ADDRESS}
+    ports:
+      - "443:8443"
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+    cap_drop: [ALL]
+    cap_add: [NET_BIND_SERVICE]
+    security_opt: [no-new-privileges:true]
+    depends_on:
+      api:
+        condition: service_healthy
+      web:
+        condition: service_started
+    networks: [workbench]
+
+networks:
+  workbench:
+    driver: bridge
+
+volumes:
+  caddy_data:
+  caddy_config:

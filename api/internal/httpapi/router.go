@@ -2,7 +2,9 @@ package httpapi
 
 import (
 	"context"
+	"crypto/rand"
 	"database/sql"
+	"encoding/base64"
 	"encoding/json"
 	"errors"
 	"net/http"
@@ -104,7 +106,7 @@ func NewRouter(deps Dependencies) http.Handler {
 			registerTransactionRoutes(mux, deps)
 		}
 	}
-	return mux
+	return securityHeaders(mux)
 }
 
 func registerQueryRoutes(mux *http.ServeMux, deps Dependencies) {
@@ -345,10 +347,34 @@ func decodeJSON(w http.ResponseWriter, r *http.Request, target any) error {
 	decoder := json.NewDecoder(http.MaxBytesReader(w, r.Body, 1<<20))
 	decoder.DisallowUnknownFields()
 	if err := decoder.Decode(target); err != nil {
+		var tooLarge *http.MaxBytesError
+		if errors.As(err, &tooLarge) {
+			writeError(w, http.StatusRequestEntityTooLarge, "request_too_large", "请求内容超过大小限制")
+			return err
+		}
 		writeError(w, http.StatusBadRequest, "invalid_json", "请求内容格式不正确")
 		return err
 	}
 	return nil
+}
+
+func securityHeaders(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Security-Policy", "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; font-src 'self'; worker-src 'self' blob:; connect-src 'self'; img-src 'self' data:; object-src 'none'; base-uri 'none'; frame-ancestors 'none'; form-action 'self'")
+		w.Header().Set("X-Content-Type-Options", "nosniff")
+		w.Header().Set("Referrer-Policy", "no-referrer")
+		w.Header().Set("Permissions-Policy", "camera=(), microphone=(), geolocation=()")
+		w.Header().Set("X-Request-ID", requestID())
+		next.ServeHTTP(w, r)
+	})
+}
+
+func requestID() string {
+	value := make([]byte, 16)
+	if _, err := rand.Read(value); err != nil {
+		panic("cryptographic random source unavailable")
+	}
+	return base64.RawURLEncoding.EncodeToString(value)
 }
 
 func writeError(w http.ResponseWriter, status int, code, message string) {

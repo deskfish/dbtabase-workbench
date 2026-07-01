@@ -9,3 +9,5 @@ build:
 	cd web && npm run build
 
 verify: test build
+	cd api && go test -race ./...
+	cd web && npm audit --audit-level=high
