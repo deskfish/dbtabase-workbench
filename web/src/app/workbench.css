@@ -149,4 +149,14 @@
 .results-tabs button,
 .results-tabs a { height: 38px; padding: 0 16px; font-size: 12px; }
 
+/* Dialogs use deliberate spacing and semantic color. */
+.dialog { padding: 26px; border-radius: 12px; background: var(--surface); }
+.dialog-kicker { color: var(--accent); font-size: 11px; letter-spacing: .06em; }
+.dialog h2 { margin: 7px 0 8px; font-size: 20px; letter-spacing: -.015em; }
+.dialog p { margin-bottom: 22px; line-height: 1.55; }
+.profile-dialog label + label { margin-top: 16px; }
+.profile-dialog .theme-field select,
+.profile-dialog input { height: 40px; }
+.dialog-actions { margin-top: 24px; }
+
 @media (max-width:800px) { .app-shell { grid-template-columns:0 minmax(0,1fr); }.sidebar { position:fixed; z-index:20; top:0; bottom:0; left:0; width:320px; transform:translateX(-100%); }.workspace { grid-column:2; }.query-toolbar .toolbar-separator,.transaction-state { display:none; } }
