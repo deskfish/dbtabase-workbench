@@ -197,6 +197,18 @@
 .team-entry { height:30px; padding:0 10px; border:1px solid var(--line); border-radius:6px; color:var(--muted); background:var(--surface); cursor:pointer; font-size:11px; }
 .team-entry:hover { color:var(--ink); border-color:var(--line-strong); }
 .team-entry b { margin-left:4px; color:var(--accent); }
+.connection-sidebar { grid-template-rows:auto minmax(0,1fr); }
+.connection-sidebar .connection-panel { min-height:0; max-height:none; height:100%; }
+.connection-search { flex:0 0 auto; height:36px; display:flex; align-items:center; gap:7px; margin:8px 10px 2px; padding:0 10px; border:1px solid var(--line); border-radius:6px; color:var(--muted); background:var(--surface); }
+.connection-search:focus-within { border-color:var(--accent); box-shadow:0 0 0 2px color-mix(in srgb,var(--accent) 12%,transparent); }
+.connection-search .ui-icon { width:15px; height:15px; }
+.connection-search input { min-width:0; flex:1; border:0; outline:0; color:var(--ink); background:transparent; font-size:12px; }
+.connection-list { flex:1 1 auto; }
+.connection-footer { flex:0 0 48px; display:grid; grid-template-columns:repeat(5,1fr); align-items:center; border-top:1px solid var(--line); background:var(--surface); }
+.connection-footer button { width:100%; height:48px; display:grid; place-items:center; border:0; color:var(--muted); background:transparent; cursor:pointer; }
+.connection-footer button:hover:not(:disabled) { color:var(--accent); background:var(--surface-2); }
+.connection-footer button:disabled { opacity:.32; cursor:not-allowed; }
+.connection-footer .ui-icon { width:17px; height:17px; }
 .share-button { opacity:0; color:var(--accent); border-color:transparent; background:transparent; }
 .connection-item:hover .share-button,.share-button:focus-visible { opacity:1; }
 .team-dialog { width:min(860px,92vw); padding:0; overflow:hidden; }

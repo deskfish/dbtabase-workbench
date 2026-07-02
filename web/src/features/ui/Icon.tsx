@@ -1,9 +1,12 @@
 import type { ReactNode } from 'react'
 
-export type IconName = 'filter'|'plus'|'minus'|'check'|'close'|'refresh'|'stop'|'play'|'download'|'edit'|'trash'|'chevron-left'|'chevrons-left'|'chevron-right'|'chevron-down'
+export type IconName = 'filter'|'search'|'share'|'settings'|'plus'|'minus'|'check'|'close'|'refresh'|'stop'|'play'|'download'|'edit'|'trash'|'chevron-left'|'chevrons-left'|'chevron-right'|'chevron-down'
 
 const paths: Record<IconName, ReactNode> = {
   filter: <><path d="M4 5h16l-6.5 7.2V18l-3 1.5v-7.3z" /></>,
+  search: <><circle cx="11" cy="11" r="6"/><path d="m16 16 4 4"/></>,
+  share: <><circle cx="18" cy="5" r="2"/><circle cx="6" cy="12" r="2"/><circle cx="18" cy="19" r="2"/><path d="m8 11 8-5M8 13l8 5"/></>,
+  settings: <><circle cx="12" cy="12" r="3"/><path d="M19 12a7 7 0 0 0-.1-1l2-1.6-2-3.4-2.5 1a8 8 0 0 0-1.7-1L14.3 3h-4.6L9.3 6a8 8 0 0 0-1.7 1L5.1 6 3 9.4 5.1 11a7 7 0 0 0 0 2L3 14.6 5.1 18l2.5-1a8 8 0 0 0 1.7 1l.4 3h4.6l.4-3a8 8 0 0 0 1.7-1l2.5 1 2-3.4-2-1.6a7 7 0 0 0 .1-1z"/></>,
   plus: <><path d="M12 5v14M5 12h14" /></>,
   minus: <><path d="M5 12h14" /></>,
   check: <><path d="m5 12 4 4 10-10" /></>,

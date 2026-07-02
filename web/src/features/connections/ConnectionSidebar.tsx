@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useMemo, useState } from 'react'
 import type { DatabaseObject } from '../../api/types'
 import type { SavedConnection } from '../../storage/connections'
 import type { RegistryConnection } from '../../storage/registryTypes'
@@ -65,6 +65,7 @@ export function ConnectionSidebar({
 }) {
   const tableCount = objects.filter((item) => item.kind === 'table').length
   const [teamOpen, setTeamOpen] = useState(false)
+  const [connectionSearch, setConnectionSearch] = useState('')
   const [connectionMenu, setConnectionMenu] = useState<{saved: SavedConnection; x: number; y: number} | null>(null)
   const connectionMenuItems: ContextMenuItem[] = connectionMenu
     ? [
@@ -74,6 +75,13 @@ export function ConnectionSidebar({
       {label: '删除连接', action: () => onDeleteConnection(connectionMenu.saved)},
     ]
     : []
+  const activeConnection = savedConnections.find((item) => item.id === activeSavedId)
+  const visibleConnections = useMemo(() => {
+    const query = connectionSearch.trim().toLowerCase()
+    if (!query) return savedConnections
+    return savedConnections.filter((item) => [item.name, item.host, item.database, item.user, item.driver]
+      .some((value) => value.toLowerCase().includes(query)))
+  }, [connectionSearch, savedConnections])
 
   return <><aside className="sidebar navicat-sidebar connection-sidebar" aria-label="连接导航">
     <div className="sidebar-profile">
@@ -91,9 +99,14 @@ export function ConnectionSidebar({
         <div><span>个人连接</span><small>{savedConnections.length} 个连接</small></div>
         <div className="connection-heading-actions"><button type="button" className="team-entry" onClick={()=>setTeamOpen(true)}>团队连接 <b>{teamConnections.length}</b></button><button type="button" aria-label="新建连接" className="icon-button" onClick={onNewConnection}><Icon name="plus" /></button></div>
       </div>
+      <label className="connection-search">
+        <Icon name="search" />
+        <input type="search" aria-label="搜索个人连接" placeholder="搜索个人连接 / 主机 / 数据库" value={connectionSearch} onChange={(event) => setConnectionSearch(event.target.value)} />
+      </label>
       <div className="connection-list" role="list">
         {savedConnections.length === 0 && <div className="empty-state compact">还没有保存的连接，请从右上角新建</div>}
-        {savedConnections.map((saved) => {
+        {savedConnections.length > 0 && visibleConnections.length === 0 && <div className="empty-state compact">没有匹配的个人连接</div>}
+        {visibleConnections.map((saved) => {
           const active = saved.id === activeSavedId
           const busy = connectingId === saved.id
           return <div
@@ -122,14 +135,16 @@ export function ConnectionSidebar({
               {busy && <span className="connection-status">连接中…</span>}
               {active && connected && !busy && <span className="connection-status online">已连接</span>}
             </button>
-            <div className="connection-actions">
-              <button type="button" aria-label={`分享 ${saved.name} 到团队`} className="button compact share-button" onClick={() => onShareConnectionToTeam(saved)}>分享</button>
-              <button type="button" aria-label={`编辑 ${saved.name}`} className="icon-button tiny" onClick={() => onEditConnection(saved)}><Icon name="edit" /></button>
-              <button type="button" aria-label={`删除 ${saved.name}`} className="icon-button tiny danger" onClick={() => onDeleteConnection(saved)}><Icon name="trash" /></button>
-            </div>
           </div>
         })}
       </div>
+      <footer className="connection-footer" aria-label="连接操作">
+        <button type="button" aria-label="新建连接" title="新建连接" onClick={onNewConnection}><Icon name="plus" /></button>
+        <button type="button" aria-label="编辑当前连接" title="编辑当前连接" disabled={!activeConnection} onClick={() => activeConnection && onEditConnection(activeConnection)}><Icon name="edit" /></button>
+        <button type="button" aria-label="分享当前连接" title="分享当前连接" disabled={!activeConnection} onClick={() => activeConnection && onShareConnectionToTeam(activeConnection)}><Icon name="share" /></button>
+        <button type="button" aria-label="删除当前连接" title="删除当前连接" disabled={!activeConnection} onClick={() => activeConnection && onDeleteConnection(activeConnection)}><Icon name="trash" /></button>
+        <button type="button" aria-label="个人设置" title="个人设置" onClick={onEditProfile}><Icon name="settings" /></button>
+      </footer>
     </div>
 
     </aside><aside className="sidebar catalog-sidebar" aria-label="数据库目录">
