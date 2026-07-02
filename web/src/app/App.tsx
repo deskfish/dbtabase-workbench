@@ -27,6 +27,7 @@ import { HistoryPanel } from '../features/history/HistoryPanel'
 import { useTransactionGuard } from '../features/editor/useTransaction'
 import { TableView } from '../features/table/TableView'
 import { Icon } from '../features/ui/Icon'
+import { SelectControl } from '../features/ui/SelectControl'
 import {
   createQueryTab,
   createTableTab,
@@ -69,6 +70,8 @@ export function App({api, sessionBootstrap, initialConnectionId = '', initialSQL
   const [profileDialog, setProfileDialog] = useState<'setup'|'edit'|null>(() => getProfile() ? null : 'setup')
   const [activeDatabase, setActiveDatabase] = useState('')
   const [databases, setDatabases] = useState<string[]>([])
+  const [querySchema, setQuerySchema] = useState('')
+  const [queryTable, setQueryTable] = useState('')
   const [switchingDatabase, setSwitchingDatabase] = useState(false)
   const [structureTabId, setStructureTabId] = useState('')
   const connected = Boolean(connectionId)
@@ -586,9 +589,9 @@ export function App({api, sessionBootstrap, initialConnectionId = '', initialSQL
 
       {activeTab?.kind === 'query' && <>
         <div className="query-toolbar">
-          <label className="query-context">数据库<select aria-label="查询数据库" value={activeDatabase} disabled={!connected} onChange={e=>void switchDatabase(e.target.value)}>{databases.map(name=><option key={name}>{name}</option>)}</select></label>
-          <label className="query-context">Schema<select aria-label="查询 Schema" defaultValue={objects.find(x=>x.kind==='table')?.schema||''}>{[...new Set(objects.filter(x=>x.kind==='table').map(x=>x.schema||''))].map(name=><option key={name}>{name}</option>)}</select></label>
-          <label className="query-context">表<select aria-label="查询表" defaultValue="" onChange={e=>{const table=objects.find(x=>x.kind==='table'&&qualifiedTableName(x)===e.target.value);if(table)updateTab(activeTab.id,{sql:defaultSelectSQL(table,activeConnection?.driver||'postgres')})}}><option value="">选择表</option>{objects.filter(x=>x.kind==='table').map(x=><option key={tableKey(x)} value={qualifiedTableName(x)}>{qualifiedTableName(x)}</option>)}</select></label>
+          <label className="query-context">数据库<SelectControl className="query-select" ariaLabel="查询数据库" value={activeDatabase} disabled={!connected} options={databases.map(name=>({value:name,label:name}))} onChange={value=>void switchDatabase(value)}/></label>
+          <label className="query-context">Schema<SelectControl className="query-select" ariaLabel="查询 Schema" value={querySchema||objects.find(x=>x.kind==='table')?.schema||''} options={[...new Set(objects.filter(x=>x.kind==='table').map(x=>x.schema||''))].map(name=>({value:name,label:name}))} onChange={setQuerySchema}/></label>
+          <label className="query-context">表<SelectControl className="query-select table-query-select" ariaLabel="查询表" value={queryTable} options={[{value:'',label:'选择表'},...objects.filter(x=>x.kind==='table').map(x=>({value:qualifiedTableName(x),label:qualifiedTableName(x)}))]} onChange={value=>{setQueryTable(value);const table=objects.find(x=>x.kind==='table'&&qualifiedTableName(x)===value);if(table)updateTab(activeTab.id,{sql:defaultSelectSQL(table,activeConnection?.driver||'postgres')})}}/></label>
           <span className="toolbar-separator" />
           <button type="button" aria-label="执行 SQL" className="button primary button-with-icon" onClick={execute} disabled={!connected || status === 'running'}><Icon name="play" />执行 SQL</button>
           <button type="button" aria-label="停止查询" className="button ghost button-with-icon" disabled={!queryId || status !== 'running'} onClick={() => void api.cancelQuery(connectionId, queryId)}><Icon name="stop" />停止</button>

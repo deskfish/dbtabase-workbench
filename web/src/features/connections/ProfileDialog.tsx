@@ -1,5 +1,6 @@
 import { useState, type FormEvent } from 'react'
 import { THEME_OPTIONS, type ThemeId } from '../../storage/theme'
+import { SelectControl } from '../ui/SelectControl'
 
 export function ProfileDialog({initialNickname = '', initialTheme = 'slate', onCancel, onSave}: {
   initialNickname?: string
@@ -24,9 +25,7 @@ export function ProfileDialog({initialNickname = '', initialTheme = 'slate', onC
       <p>昵称用于服务端同步连接配置；界面配色可随时切换。</p>
       <label>昵称<input aria-label="昵称" required autoFocus value={nickname} onChange={(e)=>setNickname(e.target.value)} placeholder="例如：小明" maxLength={32} /></label>
       <label className="theme-field">界面配色
-        <select aria-label="界面配色" value={theme} onChange={(event) => setTheme(event.target.value as ThemeId)}>
-          {THEME_OPTIONS.map((item) => <option key={item.id} value={item.id}>{item.label}</option>)}
-        </select>
+        <SelectControl ariaLabel="界面配色" value={theme} options={THEME_OPTIONS.map((item)=>({value:item.id,label:item.label}))} onChange={(value)=>setTheme(value as ThemeId)}/>
       </label>
       <div className="dialog-actions">
         {onCancel && <button type="button" className="button ghost" onClick={onCancel}>取消</button>}

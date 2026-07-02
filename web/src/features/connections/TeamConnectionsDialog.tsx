@@ -3,6 +3,7 @@ import type {SavedConnection} from '../../storage/connections'
 import type {RegistryConnection} from '../../storage/registryTypes'
 import {isTeamConnectionImported} from '../../storage/teamConnectionMatch'
 import {Icon} from '../ui/Icon'
+import {SelectControl} from '../ui/SelectControl'
 
 export function TeamConnectionsDialog({connections,personalConnections,onCopy,onClose}:{connections:RegistryConnection[];personalConnections:SavedConnection[];onCopy:(id:string)=>void;onClose:()=>void}) {
   const [search,setSearch]=useState('')
@@ -23,8 +24,8 @@ export function TeamConnectionsDialog({connections,personalConnections,onCopy,on
     <header className="team-dialog-head"><div><h2>复制团队共享连接</h2><p>选择团队中已共享的数据库连接，复制后添加到你的个人连接列表，不修改团队记录。</p></div><button className="icon-button" aria-label="关闭团队连接" onClick={onClose}><Icon name="close"/></button></header>
     <div className="team-dialog-toolbar">
       <input aria-label="搜索团队连接" placeholder="搜索连接名称、主机或数据库" value={search} onChange={event=>setSearch(event.target.value)}/>
-      <label>类型<select aria-label="连接类型" value={driver} onChange={event=>setDriver(event.target.value as typeof driver)}><option value="all">全部</option><option value="postgres">PostgreSQL</option><option value="mysql">MySQL</option></select></label>
-      <label>状态<select aria-label="复制状态" value={status} onChange={event=>setStatus(event.target.value as typeof status)}><option value="all">全部</option><option value="available">可复制</option><option value="copied">已在个人</option></select></label>
+      <label>类型<SelectControl ariaLabel="连接类型" value={driver} options={[{value:'all',label:'全部'},{value:'postgres',label:'PostgreSQL'},{value:'mysql',label:'MySQL'}]} onChange={value=>setDriver(value as typeof driver)}/></label>
+      <label>状态<SelectControl ariaLabel="复制状态" value={status} options={[{value:'all',label:'全部'},{value:'available',label:'可复制'},{value:'copied',label:'已在个人'}]} onChange={value=>setStatus(value as typeof status)}/></label>
       <span>{shown.length} 个连接</span>
     </div>
     <div className="team-table-wrap">

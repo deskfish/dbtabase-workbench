@@ -1,18 +1,29 @@
-import {readFileSync} from 'node:fs'
+import {existsSync, readdirSync, readFileSync} from 'node:fs'
+import {join} from 'node:path'
 import {describe, expect, it} from 'vitest'
 
 describe('application entrypoints', () => {
-  it('serves the production application from the prototype compatibility URL', () => {
-    const html = readFileSync(`${process.cwd()}/prototype.html`, 'utf8')
+  it('does not use native selects in production source', () => {
+    const sourceRoot = join(process.cwd(), 'src')
+    const files: string[] = []
+    const visit = (directory: string) => readdirSync(directory, {withFileTypes: true}).forEach((entry) => {
+      if (entry.name === 'prototype') return
+      const path = join(directory, entry.name)
+      if (entry.isDirectory()) visit(path)
+      else if (entry.name.endsWith('.tsx')) files.push(path)
+    })
+    visit(sourceRoot)
 
-    expect(html).toContain('/src/main.tsx')
-    expect(html).not.toContain('/src/prototype/main.tsx')
+    const offenders = files.filter((path) => readFileSync(path, 'utf8').includes('<select'))
+    expect(offenders.map((path) => path.replace(`${process.cwd()}/`, ''))).toEqual([])
   })
 
-  it('includes both application URLs in production builds', () => {
+  it('keeps only the production application entrypoint', () => {
     const config = readFileSync(`${process.cwd()}/vite.config.ts`, 'utf8')
 
-    expect(config).toContain("index: resolve(__dirname, 'index.html')")
-    expect(config).toContain("prototype: resolve(__dirname, 'prototype.html')")
+    expect(existsSync(`${process.cwd()}/prototype.html`)).toBe(false)
+    const prototypeSource = `${process.cwd()}/src/prototype`
+    expect(existsSync(prototypeSource) && readdirSync(prototypeSource, {recursive: true, withFileTypes: true}).some((entry) => entry.isFile())).toBe(false)
+    expect(config).not.toContain('prototype.html')
   })
 })

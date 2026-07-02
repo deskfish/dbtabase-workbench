@@ -21,7 +21,8 @@ it('filters by database type and copies multiple selected connections', async ()
     {id:'m1',name:'MySQL One',driver:'mysql',host:'10.0.0.3',port:3306,database:'app',user:'db',tlsMode:'prefer'},
   ]} personalConnections={[]} onCopy={onCopy} onClose={()=>{}} />)
 
-  await user.selectOptions(screen.getByRole('combobox',{name:'连接类型'}), 'postgres')
+  await user.click(screen.getByRole('combobox',{name:'连接类型'}))
+  await user.click(screen.getByRole('option',{name:'PostgreSQL'}))
   expect(screen.queryByText('MySQL One')).not.toBeInTheDocument()
   await user.click(screen.getByRole('checkbox',{name:'选择全部可复制连接'}))
   await user.click(screen.getByRole('button',{name:'复制选中（2）'}))

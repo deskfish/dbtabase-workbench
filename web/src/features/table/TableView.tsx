@@ -6,6 +6,7 @@ import { buildInsertValues, buildRowKey, buildRowUpdate, coerceCellValue, compac
 import { isFilterRuleReady } from './tableQuery'
 import { TableFilterBuilder } from './TableFilterBuilder'
 import { Icon } from '../ui/Icon'
+import { SelectControl } from '../ui/SelectControl'
 
 type Column = {name: string; dataType?: string}
 
@@ -321,9 +322,7 @@ export function TableView({
             />
           </label>
           <button type="button" className="icon-tool tiny" aria-label="下一页" disabled={!canGoNext || status === 'running'} onClick={() => onPageChange(page + 1)}><Icon name="chevron-right" /></button>
-          <label className="page-size"><span>每页</span><select value={pageSize} disabled={status === 'running'} onChange={(event) => onPageSizeChange(Number(event.target.value))}>
-            {[50, 100, 200, 500, 1000].map((size) => <option key={size} value={size}>{size}</option>)}
-          </select></label>
+          <label className="page-size"><span>每页</span><SelectControl className="compact page-size-select" ariaLabel="每页行数" value={String(pageSize)} disabled={status === 'running'} options={[50,100,200,500,1000].map(size=>({value:String(size),label:String(size)}))} onChange={(value)=>onPageSizeChange(Number(value))}/></label>
         </div>
       </div>
       <footer className={`execution-status table-status ${status}`} aria-live="polite"><span />{message}{truncated ? ' · 已达到结果上限' : ''}</footer>
