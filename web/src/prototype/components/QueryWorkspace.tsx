@@ -8,7 +8,7 @@ export function QueryWorkspace(){
   const [split,setSplit]=useState(42)
   const [status,setStatus]=useState('就绪')
   const [selected,setSelected]=useState<number|null>(null)
-  function run(){setStatus('正在查询…');window.setTimeout(()=>setStatus('查询成功'),80)}
+  function run(){setStatus('查询成功')}
   return <section className="proto-query-workspace" style={{'--query-split':`${split}%`} as React.CSSProperties}>
     <header className="proto-query-toolbar"><label><span>数据库：</span><select><option>configuration</option></select></label><i/><label><span>Schema：</span><select><option>public</option></select></label><i/><label><span>表：</span><select><option>conversation_record</option></select></label><i/><button className="proto-primary" aria-label="运行查询" onClick={run}><PrototypeIcon name="play"/>运行</button><button aria-label="停止查询" disabled={status!=='正在查询…'}><PrototypeIcon name="stop"/>停止</button><i/><button><PrototypeIcon name="refresh"/>刷新</button><button><PrototypeIcon name="download"/>导出 CSV</button><button><PrototypeIcon name="plus"/>新建查询</button><span className="proto-toolbar-spacer"/><button aria-label="查询更多操作"><PrototypeIcon name="more"/></button></header>
     <div className="proto-sql-editor"><div className="proto-line-numbers">1<br/>2<br/>3</div><textarea aria-label="SQL 编辑器" value={sql} onChange={event=>setSQL(event.target.value)} spellCheck={false}/><div className="proto-editor-actions"><button><PrototypeIcon name="columns"/>显示列</button><button><PrototypeIcon name="filter"/>筛选</button><button><PrototypeIcon name="settings"/></button></div></div>
