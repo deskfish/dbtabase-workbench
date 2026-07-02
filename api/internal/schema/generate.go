@@ -65,7 +65,18 @@ func Generate(dialect, schemaName, tableName string, ops []Operation) (Preview, 
 				return Preview{}, fmt.Errorf("invalid column type")
 			}
 			if dialect == "postgres" {
-				sql = fmt.Sprintf("ALTER TABLE %s ALTER COLUMN %s TYPE %s", table, n, strings.ToUpper(op.Column.Type))
+				actions := []string{fmt.Sprintf("ALTER COLUMN %s TYPE %s", n, strings.ToUpper(op.Column.Type))}
+				if op.Column.Nullable {
+					actions = append(actions, fmt.Sprintf("ALTER COLUMN %s DROP NOT NULL", n))
+				} else {
+					actions = append(actions, fmt.Sprintf("ALTER COLUMN %s SET NOT NULL", n))
+				}
+				if op.Column.Default == nil {
+					actions = append(actions, fmt.Sprintf("ALTER COLUMN %s DROP DEFAULT", n))
+				} else {
+					actions = append(actions, fmt.Sprintf("ALTER COLUMN %s SET DEFAULT %s", n, *op.Column.Default))
+				}
+				sql = fmt.Sprintf("ALTER TABLE %s %s", table, strings.Join(actions, ", "))
 			} else {
 				def, e := columnDef(q, op.Column)
 				if e != nil {

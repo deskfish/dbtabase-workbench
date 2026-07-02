@@ -19,6 +19,7 @@ var ErrStructureDrift = errors.New("table structure changed")
 var ErrConfirmation = errors.New("risk confirmation required")
 
 type tokenData struct {
+	Dialect     string      `json:"x"`
 	Scope       string      `json:"s"`
 	Fingerprint string      `json:"f"`
 	Expires     int64       `json:"e"`
@@ -44,7 +45,7 @@ func (s *Service) Preview(dialect, scope string, before Table, ops []Operation) 
 	}
 	p.Fingerprint = Fingerprint(before)
 	p.ExpiresAt = time.Now().Add(s.ttl).Unix()
-	d := tokenData{Scope: scope, Fingerprint: p.Fingerprint, Expires: p.ExpiresAt, DDL: p.Statements}
+	d := tokenData{Dialect: dialect, Scope: scope, Fingerprint: p.Fingerprint, Expires: p.ExpiresAt, DDL: p.Statements}
 	p.Token = s.sign(d)
 	return p, nil
 }
@@ -72,19 +73,40 @@ func (s *Service) Execute(ctx context.Context, db *sql.DB, scope, currentFingerp
 	s.used[token] = struct{}{}
 	s.mu.Unlock()
 	out := make([]ExecutionResult, 0, len(d.DDL))
+	executor := interface {
+		ExecContext(context.Context, string, ...any) (sql.Result, error)
+	}(db)
+	var tx *sql.Tx
+	if d.Dialect == "postgres" {
+		var beginErr error
+		tx, beginErr = safeBegin(ctx, db)
+		if beginErr != nil {
+			return nil, beginErr
+		}
+		executor = tx
+	}
 	for _, st := range d.DDL {
-		_, err := db.ExecContext(ctx, st.SQL)
+		_, err := executor.ExecContext(ctx, st.SQL)
 		r := ExecutionResult{SQL: st.SQL, Status: "success"}
 		if err != nil {
 			r.Status = "failed"
 			r.Error = err.Error()
 			out = append(out, r)
+			if tx != nil {
+				_ = tx.Rollback()
+			}
 			return out, err
 		}
 		out = append(out, r)
 	}
+	if tx != nil {
+		if err := tx.Commit(); err != nil {
+			return out, err
+		}
+	}
 	return out, nil
 }
+func safeBegin(ctx context.Context, db *sql.DB) (*sql.Tx, error) { return db.BeginTx(ctx, nil) }
 func (s *Service) sign(d tokenData) string {
 	b, _ := json.Marshal(d)
 	payload := base64.RawURLEncoding.EncodeToString(b)
