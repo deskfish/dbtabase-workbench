@@ -14,6 +14,7 @@ import (
 	database "dbworkbench/api/internal/db"
 	"dbworkbench/api/internal/query"
 	"dbworkbench/api/internal/registry"
+	"dbworkbench/api/internal/schema"
 	"dbworkbench/api/internal/session"
 	"dbworkbench/api/internal/table"
 )
@@ -26,6 +27,7 @@ type Dependencies struct {
 	OpenConnection      func(context.Context, database.ConnectionInput) (*sql.DB, error)
 	Queries             *query.Service
 	Transactions        *query.TransactionService
+	Schema              *schema.Service
 }
 
 func NewRouter(deps Dependencies) http.Handler {
@@ -172,11 +174,88 @@ func NewRouter(deps Dependencies) http.Handler {
 		if deps.Transactions != nil {
 			registerTransactionRoutes(mux, deps)
 		}
+		if deps.Schema != nil {
+			registerSchemaRoutes(mux, deps)
+		}
 	}
 	if deps.Registry != nil {
 		registerRegistryRoutes(mux, deps.Registry)
 	}
 	return securityHeaders(mux)
+}
+
+func registerSchemaRoutes(mux *http.ServeMux, deps Dependencies) {
+	get := func(w http.ResponseWriter, r *http.Request) (string, *sql.DB, database.Driver, database.TableDetail, bool) {
+		sessionID, ok := requireSession(w, r, deps.Sessions)
+		if !ok {
+			return "", nil, "", database.TableDetail{}, false
+		}
+		dbHandle, driverName, found := deps.Sessions.GetConnection(sessionID, r.PathValue("id"))
+		if !found {
+			writeError(w, http.StatusNotFound, "connection_not_found", "连接不存在或已过期")
+			return "", nil, "", database.TableDetail{}, false
+		}
+		driver := database.Driver(driverName)
+		detail, err := database.DescribeTable(r.Context(), dbHandle, driver, r.PathValue("schema"), r.PathValue("table"))
+		if err != nil {
+			writeError(w, http.StatusBadGateway, "table_metadata_failed", "无法读取表结构")
+			return "", nil, "", database.TableDetail{}, false
+		}
+		return sessionID, dbHandle, driver, detail, true
+	}
+	mux.HandleFunc("GET /api/connections/{id}/tables/{schema}/{table}", func(w http.ResponseWriter, r *http.Request) {
+		_, _, _, detail, ok := get(w, r)
+		if ok {
+			writeJSON(w, http.StatusOK, detail)
+		}
+	})
+	mux.HandleFunc("POST /api/connections/{id}/tables/{schema}/{table}/schema/preview", func(w http.ResponseWriter, r *http.Request) {
+		sessionID, _, driver, detail, ok := get(w, r)
+		if !ok {
+			return
+		}
+		var input struct {
+			Operations []schema.Operation `json:"operations"`
+		}
+		if decodeJSON(w, r, &input) != nil {
+			return
+		}
+		scope := queryScope(sessionID, r.PathValue("id")) + "/" + r.PathValue("schema") + "/" + r.PathValue("table")
+		p, err := deps.Schema.Preview(string(driver), scope, detail.Table, input.Operations)
+		if err != nil {
+			writeError(w, http.StatusBadRequest, "schema_preview_failed", err.Error())
+			return
+		}
+		writeJSON(w, http.StatusOK, p)
+	})
+	mux.HandleFunc("POST /api/connections/{id}/tables/{schema}/{table}/schema/execute", func(w http.ResponseWriter, r *http.Request) {
+		sessionID, dbHandle, _, detail, ok := get(w, r)
+		if !ok {
+			return
+		}
+		var input struct {
+			Token     string `json:"token"`
+			Confirmed bool   `json:"confirmed"`
+		}
+		if decodeJSON(w, r, &input) != nil {
+			return
+		}
+		scope := queryScope(sessionID, r.PathValue("id")) + "/" + r.PathValue("schema") + "/" + r.PathValue("table")
+		results, err := deps.Schema.Execute(r.Context(), dbHandle, scope, schema.Fingerprint(detail.Table), input.Token, input.Confirmed)
+		if errors.Is(err, schema.ErrStructureDrift) {
+			writeError(w, http.StatusConflict, "schema_drift", "表结构已变化，请刷新后重新预览")
+			return
+		}
+		if errors.Is(err, schema.ErrConfirmation) {
+			writeError(w, http.StatusConflict, "schema_confirmation_required", "危险结构变更需要确认")
+			return
+		}
+		if err != nil {
+			writeJSON(w, http.StatusBadGateway, map[string]any{"error": map[string]string{"code": "schema_execute_failed", "message": "结构变更执行失败"}, "results": results})
+			return
+		}
+		writeJSON(w, http.StatusOK, map[string]any{"results": results})
+	})
 }
 
 func registerQueryRoutes(mux *http.ServeMux, deps Dependencies) {

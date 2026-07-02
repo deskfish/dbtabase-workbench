@@ -15,6 +15,7 @@ import (
 	"dbworkbench/api/internal/network"
 	"dbworkbench/api/internal/query"
 	"dbworkbench/api/internal/registry"
+	"dbworkbench/api/internal/schema"
 	"dbworkbench/api/internal/session"
 )
 
@@ -35,6 +36,11 @@ func main() {
 	sessions := session.NewStore(30 * time.Minute)
 	queries := query.NewService(query.Limits{Timeout: cfg.QueryTimeout, PageSize: cfg.PageSize, MaxRows: cfg.MaxRows})
 	transactions := query.NewTransactionService(5 * time.Minute)
+	schemaSecret := cfg.RegistrySecret
+	if schemaSecret == "" {
+		schemaSecret = "database-workbench-ephemeral-schema-secret"
+	}
+	schemaService := schema.NewService(schemaSecret, 10*time.Minute)
 	var registryStore *registry.Store
 	if cfg.RegistrySecret != "" {
 		registryStore, err = registry.Open(cfg.RegistryPath, cfg.RegistrySecret)
@@ -57,6 +63,7 @@ func main() {
 			OpenConnection: database.Open,
 			Queries:        queries,
 			Transactions:   transactions,
+			Schema:         schemaService,
 		}),
 		ReadHeaderTimeout: 5 * time.Second,
 		IdleTimeout:       60 * time.Second,
