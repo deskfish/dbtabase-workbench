@@ -80,6 +80,9 @@ export function TableView({
 }) {
   const [headerMenu, setHeaderMenu] = useState<HeaderMenu | null>(null)
   const [editingCell, setEditingCell] = useState<{row: number; column: number} | null>(null)
+  const [dense,setDense]=useState(false)
+  const [showColumns,setShowColumns]=useState(false)
+  const [hiddenColumns,setHiddenColumns]=useState<Set<string>>(()=>new Set())
 
   const editable = uniqueKey.length > 0 && uniqueKey.every((key) => columns.some((column) => column.name === key))
   const draftState = draft ?? emptyDraft()
@@ -210,17 +213,21 @@ export function TableView({
   const canGoNext = rows.length >= pageSize || truncated
   const rowOffset = (page - 1) * pageSize
   const activeFilterCount = filterRules.filter(isFilterRuleReady).length
+  const visibleColumnIndexes=columns.map((_,index)=>index).filter(index=>!hiddenColumns.has(columns[index].name))
 
-  return <div className={`table-view ${status === 'running' ? 'loading' : ''}`}>
+  return <div className={`table-view ${status === 'running' ? 'loading' : ''} ${dense?'dense':''}`}>
     {!editable && <p className="read-only-note">此表没有主键或唯一键，仅支持只读浏览与筛选排序</p>}
     {status === 'running' && <div className="table-loading-mask">正在加载数据…</div>}
 
     <div className="table-view-head">
+      <div className="table-identity"><div><strong>{schema?`${schema}.`:''}{table}</strong><small>表 / {columns.length} 字段 · 主键 {uniqueKey.join(', ')||'无'}</small></div><span>{rows.length} 行 · {message}</span></div>
       <div className="table-view-toolbar">
         <button type="button" className={`icon-tool ${showFilter ? 'active' : ''}`} aria-label="筛选" title="筛选" onClick={onToggleFilter}><Icon name="filter" /></button>
         {activeFilterCount > 0 && <span className="table-filter-badge">{activeFilterCount} 条筛选</span>}
         {sort && <span className="table-sort-badge">{sort.column} {sort.direction === 'asc' ? '↑' : '↓'}</span>}
         <span className="table-toolbar-spacer" />
+        <div className="column-menu-wrap"><button type="button" className="button compact" onClick={()=>setShowColumns(v=>!v)}>显示列</button>{showColumns&&<div className="column-menu">{columns.map(c=><label key={c.name}><input type="checkbox" checked={!hiddenColumns.has(c.name)} onChange={()=>setHiddenColumns(current=>{const next=new Set(current);if(next.has(c.name))next.delete(c.name);else next.add(c.name);return next})}/>{c.name}</label>)}</div>}</div>
+        <button type="button" className="button compact" onClick={()=>setDense(v=>!v)}>密度：{dense?'紧凑':'标准'}</button>
         <button type="button" className="button ghost compact button-with-icon" disabled={rows.length === 0} onClick={onExport}><Icon name="download" />导出 CSV</button>
       </div>
 
@@ -237,7 +244,7 @@ export function TableView({
         <thead>
           <tr>
             <th>#</th>
-            {columns.map((column) => <th
+            {visibleColumnIndexes.map((columnIndex) => {const column=columns[columnIndex];return <th
               key={column.name}
               className={sort?.column === column.name ? 'sorted' : ''}
               onContextMenu={(event) => {
@@ -248,12 +255,12 @@ export function TableView({
               {column.name}
               <small>{column.dataType}</small>
               {sort?.column === column.name && <span className="sort-indicator">{sort.direction === 'asc' ? '↑' : '↓'}</span>}
-            </th>)}
+            </th>})}
           </tr>
         </thead>
         <tbody>
           {displayRows.length === 0 && columns.length > 0 && status !== 'running' && <tr className="table-empty-row">
-            <td colSpan={columns.length + 1}>无匹配数据</td>
+            <td colSpan={visibleColumnIndexes.length + 1}>无匹配数据</td>
           </tr>}
           {displayRows.map((item, rowIndex) => <tr
             key={`${item.isNew ? 'new' : item.sourceIndex}-${rowIndex}`}
@@ -261,7 +268,7 @@ export function TableView({
             onClick={() => onSelectRow(rowIndex)}
           >
             <th>{rowOffset + rowIndex + 1}</th>
-            {item.values.map((value, columnIndex) => {
+            {visibleColumnIndexes.map((columnIndex) => {const value=item.values[columnIndex]
               const editing = editingCell?.row === rowIndex && editingCell.column === columnIndex
               return <td
                 key={columnIndex}

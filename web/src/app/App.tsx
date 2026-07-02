@@ -39,9 +39,10 @@ import {
 } from '../features/workspace/types'
 import { prepareTableTabReload } from '../features/workspace/tableTabLoader'
 import { preserveResultColumns, resolveTableColumns } from '../features/table/tableColumns'
+import { SchemaWorkspace } from '../features/schema/SchemaWorkspace'
 
 export type WorkbenchAPI = Pick<APIClient,
-  'createSession'|'connect'|'disconnect'|'listDatabases'|'switchDatabase'|'metadata'|'startQuery'|'queryResult'|'cancelQuery'|'exportCSV'|'beginTransaction'|'finishTransaction'|'mutate'
+  'createSession'|'connect'|'disconnect'|'listDatabases'|'switchDatabase'|'metadata'|'startQuery'|'queryResult'|'cancelQuery'|'exportCSV'|'beginTransaction'|'finishTransaction'|'mutate'|'tableDetail'|'previewSchema'|'executeSchema'
 > & ConnectionRegistryAPI
 
 export function App({api, sessionBootstrap, initialConnectionId = '', initialSQL = 'SELECT *\nFROM your_table\nLIMIT 200;'}: {api:WorkbenchAPI; sessionBootstrap?:Promise<string>; initialConnectionId?:string; initialSQL?:string}) {
@@ -69,6 +70,7 @@ export function App({api, sessionBootstrap, initialConnectionId = '', initialSQL
   const [activeDatabase, setActiveDatabase] = useState('')
   const [databases, setDatabases] = useState<string[]>([])
   const [switchingDatabase, setSwitchingDatabase] = useState(false)
+  const [structureTabId, setStructureTabId] = useState('')
   const connected = Boolean(connectionId)
   const activeConnection = savedConnections.find((item) => item.id === activeSavedId)
 
@@ -533,7 +535,8 @@ export function App({api, sessionBootstrap, initialConnectionId = '', initialSQL
 
       {activeTab?.kind === 'table' && <>
         <section className="table-pane" aria-label="表数据">
-          <TableView
+          <nav className="table-workspace-tabs"><button className={structureTabId===activeTab.id?'':'active'} onClick={()=>setStructureTabId('')}>数据预览</button><button className={structureTabId===activeTab.id?'active':''} onClick={()=>setStructureTabId(activeTab.id)}>表结构</button></nav>
+          {structureTabId===activeTab.id?<SchemaWorkspace api={api as APIClient} connectionId={connectionId} schema={activeTab.table.schema||activeDatabase} table={activeTab.table.name} onBack={()=>setStructureTabId('')} onSaved={()=>{void refreshMetadata()}}/>:<TableView
             schema={activeTab.table.schema}
             table={activeTab.table.name}
             columns={columns}
@@ -569,12 +572,16 @@ export function App({api, sessionBootstrap, initialConnectionId = '', initialSQL
             onMutate={async (operation, input) => {
               await api.mutate(connectionId, operation, {...input, transactionId: transactionId || undefined})
             }}
-          />
+          />}
         </section>
       </>}
 
       {activeTab?.kind === 'query' && <>
         <div className="query-toolbar">
+          <label className="query-context">数据库<select aria-label="查询数据库" value={activeDatabase} disabled={!connected} onChange={e=>void switchDatabase(e.target.value)}>{databases.map(name=><option key={name}>{name}</option>)}</select></label>
+          <label className="query-context">Schema<select aria-label="查询 Schema" defaultValue={objects.find(x=>x.kind==='table')?.schema||''}>{[...new Set(objects.filter(x=>x.kind==='table').map(x=>x.schema||''))].map(name=><option key={name}>{name}</option>)}</select></label>
+          <label className="query-context">表<select aria-label="查询表" defaultValue="" onChange={e=>{const table=objects.find(x=>x.kind==='table'&&qualifiedTableName(x)===e.target.value);if(table)updateTab(activeTab.id,{sql:defaultSelectSQL(table,activeConnection?.driver||'postgres')})}}><option value="">选择表</option>{objects.filter(x=>x.kind==='table').map(x=><option key={tableKey(x)} value={qualifiedTableName(x)}>{qualifiedTableName(x)}</option>)}</select></label>
+          <span className="toolbar-separator" />
           <button type="button" aria-label="执行 SQL" className="button primary button-with-icon" onClick={execute} disabled={!connected || status === 'running'}><Icon name="play" />执行 SQL</button>
           <button type="button" aria-label="停止查询" className="button ghost button-with-icon" disabled={!queryId || status !== 'running'} onClick={() => void api.cancelQuery(connectionId, queryId)}><Icon name="stop" />停止</button>
           <span className="toolbar-separator" />

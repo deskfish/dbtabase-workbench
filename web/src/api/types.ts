@@ -38,3 +38,10 @@ export type MutationInput = {
   key?: Record<string, unknown>
   transactionId?: string
 }
+
+export type SchemaColumn = {name:string; type:string; nullable:boolean; default?:string; comment?:string; primary?:boolean}
+export type SchemaIndex = {name:string; columns:string[]; unique:boolean}
+export type SchemaForeignKey = {name:string; columns:string[]; refSchema:string; refTable:string; refColumns:string[]; onDelete?:string; onUpdate?:string}
+export type TableDetail = {table:{schema:string; name:string; columns:SchemaColumn[]; indexes:SchemaIndex[]; foreignKeys:SchemaForeignKey[]}; capabilities:{schemaEdit:boolean;indexEdit:boolean;foreignKeyEdit:boolean;transactionalDDL:boolean}; ddl?:string;estimatedRows?:number;permissions:string[]}
+export type SchemaOperation = {kind:string;name?:string;newName?:string;column?:SchemaColumn;index?:SchemaIndex;foreignKey?:SchemaForeignKey}
+export type SchemaPreview = {statements:{sql:string;destructive?:boolean}[];risks:{level:string;kind:string;target:string;message:string}[];warnings?:string[];fingerprint:string;token:string;expiresAt:number}

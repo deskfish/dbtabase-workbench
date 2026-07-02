@@ -1,4 +1,4 @@
-import type { ConnectionInput, DatabaseObject, MutationInput, QueryResult } from './types'
+import type { ConnectionInput, DatabaseObject, MutationInput, QueryResult, SchemaOperation, SchemaPreview, TableDetail } from './types'
 import type { RegistryConnection } from '../storage/registryTypes'
 
 type Fetcher = (input: RequestInfo | URL, init?: RequestInit) => Promise<Response>
@@ -62,6 +62,10 @@ export class APIClient {
     const result = await this.request<{objects:DatabaseObject[]}>(`/api/connections/${encodeURIComponent(connectionId)}/metadata`)
     return result.objects
   }
+
+  tableDetail(connectionId:string,schema:string,table:string):Promise<TableDetail>{return this.request(`/api/connections/${encodeURIComponent(connectionId)}/tables/${encodeURIComponent(schema)}/${encodeURIComponent(table)}`)}
+  previewSchema(connectionId:string,schema:string,table:string,operations:SchemaOperation[]):Promise<SchemaPreview>{return this.request(`/api/connections/${encodeURIComponent(connectionId)}/tables/${encodeURIComponent(schema)}/${encodeURIComponent(table)}/schema/preview`,{method:'POST',body:JSON.stringify({operations})})}
+  executeSchema(connectionId:string,schema:string,table:string,token:string,confirmed:boolean):Promise<{results:{sql:string;status:string;error?:string}[]}>{return this.request(`/api/connections/${encodeURIComponent(connectionId)}/tables/${encodeURIComponent(schema)}/${encodeURIComponent(table)}/schema/execute`,{method:'POST',body:JSON.stringify({token,confirmed})})}
 
   async startQuery(connectionId: string, sql: string, options: {confirmed?:boolean; confirmationTarget?:string; transactionId?:string} = {}): Promise<string> {
     const result = await this.request<{queryId:string}>(`/api/connections/${encodeURIComponent(connectionId)}/queries`, {method:'POST', body:JSON.stringify({sql, ...options})})
