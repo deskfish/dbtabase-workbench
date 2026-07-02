@@ -45,6 +45,14 @@ beforeEach(() => {
   saveProfile({nickname: '测试员'})
 })
 
+it('renders the global database workbench header', () => {
+  render(<App api={fakeAPI()} sessionBootstrap={Promise.resolve('session')} />)
+
+  expect(screen.getByRole('banner')).toHaveTextContent('数据库管理')
+  expect(screen.getByRole('banner')).toHaveTextContent('PostgreSQL / MySQL')
+  expect(screen.getByRole('banner')).toHaveTextContent('测试员')
+})
+
 it('executes SQL and renders returned rows', async () => {
   const api = fakeAPI()
   render(<App api={api} sessionBootstrap={Promise.resolve('session')} initialConnectionId="connection" initialSQL="SELECT id, name FROM people" />)

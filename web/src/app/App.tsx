@@ -470,6 +470,14 @@ export function App({api, sessionBootstrap, initialConnectionId = '', initialSQL
 
   return <div className="app-shell">
     <a className="skip-link" href="#sql-editor">跳到 SQL 编辑器</a>
+    <header className="topbar">
+      <div className="brand"><span className="brand-mark">DB</span><div><h1>数据库管理</h1><p>Database Workbench</p></div></div>
+      <div className="topbar-actions">
+        <span>PostgreSQL / MySQL</span>
+        <span className={`connection-pill ${connected?'connected':''}`}><span/>{connected?'已连接':'未连接'}{activeConnection?` · ${activeConnection.name}`:''}</span>
+        <button type="button" className="topbar-profile" onClick={()=>setProfileDialog('edit')}><b>{(nickname||'访').slice(0,1)}</b>{nickname||'访客'} · 团队</button>
+      </div>
+    </header>
 
     <ConnectionSidebar
       nickname={nickname || '访客'}
