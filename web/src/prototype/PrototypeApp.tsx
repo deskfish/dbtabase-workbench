@@ -1,8 +1,10 @@
 import './prototype.css'
 import { useState } from 'react'
-import { databases, personalConnections, tables } from './fixtures'
+import { dataColumns, dataRows, databases, personalConnections, tables, teamConnections } from './fixtures'
 import { CatalogSidebar } from './components/CatalogSidebar'
 import { ConnectionSidebar } from './components/ConnectionSidebar'
+import { DataWorkspace, type DataSection } from './components/DataWorkspace'
+import { TeamConnectionsDialog } from './components/TeamConnectionsDialog'
 
 export function PrototypeApp() {
   const [connections,setConnections]=useState(personalConnections)
@@ -10,6 +12,8 @@ export function PrototypeApp() {
   const [selectedDatabase,setSelectedDatabase]=useState('configuration')
   const [selectedTable,setSelectedTable]=useState('conversation_record')
   const [teamOpen,setTeamOpen]=useState(false)
+  const [teams,setTeams]=useState(teamConnections)
+  const [section,setSection]=useState<DataSection>('data')
   const [notice,setNotice]=useState('')
   return <div className="prototype-root">
     <header className="proto-topbar">
@@ -19,7 +23,7 @@ export function PrototypeApp() {
     </header>
     <ConnectionSidebar connections={connections} selectedId={selectedConnection} teamCount={6} onSelect={setSelectedConnection} onOpenTeam={()=>setTeamOpen(true)} onNew={()=>setNotice('新建连接')} onEdit={()=>setNotice('编辑连接')} onDelete={id=>setConnections(current=>current.filter(item=>item.id!==id))} onShare={id=>setConnections(current=>current.map(item=>item.id===id?{...item,shared:true}:item))}/>
     <CatalogSidebar databases={databases} tables={tables} selectedDatabase={selectedDatabase} selectedTable={selectedTable} onSelectDatabase={setSelectedDatabase} onSelectTable={setSelectedTable}/>
-    <main className="proto-workspace-placeholder" aria-label="数据库工作区"><strong>public.{selectedTable}</strong>{notice&&<span className="proto-notice">{notice}</span>}</main>
-    {teamOpen&&<div className="proto-dialog-backdrop"><div role="dialog" aria-label="团队连接"><button aria-label="关闭团队连接" onClick={()=>setTeamOpen(false)}>关闭</button></div></div>}
+    <main className="proto-workspace" aria-label="数据库工作区"><DataWorkspace table={selectedTable} columns={dataColumns} rows={dataRows} activeSection={section} onSectionChange={setSection}/>{notice&&<span className="proto-notice">{notice}</span>}</main>
+    {teamOpen&&<TeamConnectionsDialog connections={teams} onClose={()=>setTeamOpen(false)} onCopy={ids=>{setTeams(current=>current.map(item=>ids.includes(item.id)?{...item,copied:true}:item));setConnections(current=>[...current,...teams.filter(item=>ids.includes(item.id)&&!current.some(connection=>connection.host===item.host)).map(({owner:_,team:__,syncedAt:___,copied:____,...item})=>item)])}}/>}
   </div>
 }
