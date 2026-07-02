@@ -14,24 +14,40 @@ export class APIClient {
   private sessionId = ''
   private sessionReady: Promise<string> | null = null
 
-  constructor(private readonly baseURL = '', private readonly fetcher: Fetcher = (...args) => globalThis.fetch(...args)) {}
+  constructor(
+    private readonly baseURL = '',
+    private readonly fetcher: Fetcher = (...args) => globalThis.fetch(...args),
+    private readonly sessionRetryDelayMs = 250,
+  ) {}
 
   async createSession(): Promise<string> {
     if (this.sessionId) return this.sessionId
     if (this.sessionReady) return this.sessionReady
     this.sessionReady = (async () => {
-      const response = await this.fetcher(`${this.baseURL}/api/sessions`, {
-        method: 'POST',
-        headers: {Accept: 'application/json'},
-        credentials: 'same-origin',
-      })
-      if (!response.ok) {
-        const payload = await response.json().catch(() => ({})) as {error?:{code?:string; message?:string}}
-        throw new APIError(response.status, payload.error?.code ?? 'session_failed', payload.error?.message ?? `请求失败 (${response.status})`)
+      let lastError: unknown
+      for (let attempt = 0; attempt < 3; attempt += 1) {
+        try {
+          const response = await this.fetchWithTimeout(`${this.baseURL}/api/sessions`, {
+            method: 'POST',
+            headers: {Accept: 'application/json'},
+            credentials: 'same-origin',
+          })
+          if (!response.ok) {
+            const payload = await response.json().catch(() => ({})) as {error?:{code?:string; message?:string}}
+            throw new APIError(response.status, payload.error?.code ?? 'session_failed', payload.error?.message ?? `请求失败 (${response.status})`)
+          }
+          const result = await response.json() as {sessionId: string}
+          this.sessionId = result.sessionId
+          return result.sessionId
+        } catch (error) {
+          lastError = error
+          const status = error instanceof APIError ? error.status : 0
+          const transient = status === 0 || status === 408 || status === 429 || status >= 500
+          if (!transient || attempt === 2) throw error
+          await new Promise(resolve => setTimeout(resolve, this.sessionRetryDelayMs * (attempt + 1)))
+        }
       }
-      const result = await response.json() as {sessionId: string}
-      this.sessionId = result.sessionId
-      return result.sessionId
+      throw lastError
     })().finally(() => {
       this.sessionReady = null
     })

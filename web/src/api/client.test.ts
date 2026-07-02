@@ -52,3 +52,13 @@ it('creates a session automatically before connecting', async () => {
   const request = fetcher.mock.calls[1][1] as RequestInit
   expect(new Headers(request.headers).get('X-Session-ID')).toBe('session-1')
 })
+
+it('retries transient session initialization failures automatically', async () => {
+  const fetcher = vi.fn()
+    .mockResolvedValueOnce(new Response(JSON.stringify({error:{code:'unavailable',message:'restarting'}}), {status:503, headers:{'Content-Type':'application/json'}}))
+    .mockResolvedValueOnce(new Response(JSON.stringify({sessionId:'session-after-retry'}), {status:201, headers:{'Content-Type':'application/json'}}))
+  const client = new APIClient('', fetcher, 0)
+
+  await expect(client.createSession()).resolves.toBe('session-after-retry')
+  expect(fetcher).toHaveBeenCalledTimes(2)
+})
