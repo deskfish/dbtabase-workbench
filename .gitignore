@@ -10,3 +10,4 @@ test-results/
 *.tsbuildinfo
 /api/server
 /work/
+.DS_Store
