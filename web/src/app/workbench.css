@@ -392,3 +392,25 @@
 .mongo-document-view .result-grid td,
 .mongo-schema-scroll .result-grid th,
 .mongo-schema-scroll .result-grid td { white-space:nowrap; }
+
+/* Workbench UX refinement */
+.team-completion{min-height:280px;display:grid;place-items:center;align-content:center;gap:8px;margin:0 24px 16px;padding:32px;text-align:center;border:1px dashed var(--line-strong);border-radius:8px;background:var(--surface-2)}
+.team-completion>.ui-icon{width:34px;height:34px;padding:7px;border-radius:50%;color:var(--success);background:color-mix(in srgb,var(--success) 12%,transparent)}
+.team-completion h3,.team-completion p{margin:0}.team-completion p{color:var(--muted)}
+.schema-body:not(:has(.ddl-panel)){grid-template-columns:1fr}
+.schema-readonly .field-cell{padding:0 8px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--ink);text-align:left}
+.schema-readonly{background:color-mix(in srgb,var(--surface-2) 45%,var(--surface))}
+.workspace-onboarding{max-width:560px!important}
+.onboarding-icon{display:grid;place-items:center;width:48px;height:48px;margin:0 auto 16px;border-radius:12px;color:var(--accent);background:color-mix(in srgb,var(--accent) 12%,transparent)}
+.onboarding-icon .ui-icon{width:25px;height:25px}.workspace-onboarding-actions{display:flex;justify-content:center;gap:10px;margin-top:22px}
+.run-query-button kbd{margin-left:4px;padding:2px 5px;border:1px solid color-mix(in srgb,currentColor 25%,transparent);border-radius:4px;font:10px var(--font-mono);opacity:.82}
+.tab-shell{position:relative;display:flex;align-items:stretch}.tab-shell .tab{padding-right:28px}
+.tab-close{position:absolute;right:5px;top:50%;display:grid;place-items:center;width:20px;height:20px;padding:0;transform:translateY(-50%);border:0;border-radius:4px;color:var(--muted);background:transparent;cursor:pointer}
+.tab-close:hover{color:var(--ink);background:var(--surface-2)}.tab-close .ui-icon{width:13px;height:13px}
+.tab[role=tab]:focus-visible,.table-workspace-tabs button:focus-visible,.schema-tabs button:focus-visible{outline:2px solid var(--accent);outline-offset:-2px}
+.table-text-tool{width:auto!important;min-width:58px;padding:0 8px!important;gap:5px}.table-text-tool .ui-icon{width:14px;height:14px}
+.table-data-grid .sticky-row-number{position:sticky;left:0;z-index:4;min-width:46px;background:var(--surface-2)}
+.table-data-grid td.sticky-key-column,.table-data-grid th.sticky-key-column{position:sticky;left:46px;z-index:3;background:var(--surface)}
+.table-data-grid thead th.sticky-key-column{z-index:5;background:var(--surface-2)}
+.table-data-grid tr.selected td.sticky-key-column,.table-data-grid tr.selected th.sticky-row-number{background:color-mix(in srgb,var(--accent) 10%,var(--surface))}
+.table-view-head{position:sticky;top:0;z-index:8}.table-data-bar{position:sticky;bottom:0;z-index:8}

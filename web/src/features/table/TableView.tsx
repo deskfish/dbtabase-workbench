@@ -215,6 +215,7 @@ export function TableView({
   const rowOffset = (page - 1) * pageSize
   const activeFilterCount = filterRules.filter(isFilterRuleReady).length
   const visibleColumnIndexes=columns.map((_,index)=>index).filter(index=>!hiddenColumns.has(columns[index].name))
+  const stickyKeyColumnIndex=visibleColumnIndexes.find(index=>uniqueKey.includes(columns[index].name))
 
   return <div className={`table-view ${status === 'running' ? 'loading' : ''} ${dense?'dense':''}`}>
     {!editable && <p className="read-only-note">此表没有主键或唯一键，仅支持只读浏览与筛选排序</p>}
@@ -243,10 +244,10 @@ export function TableView({
       <table className="result-grid table-data-grid">
         <thead>
           <tr>
-            <th>#</th>
+            <th className="sticky-row-number">#</th>
             {visibleColumnIndexes.map((columnIndex) => {const column=columns[columnIndex];return <th
               key={column.name}
-              className={sort?.column === column.name ? 'sorted' : ''}
+              className={`${sort?.column === column.name ? 'sorted' : ''} ${columnIndex===stickyKeyColumnIndex?'sticky-key-column':''}`}
               onContextMenu={(event) => {
                 event.preventDefault()
                 setHeaderMenu({column, x: event.clientX, y: event.clientY})
@@ -267,12 +268,12 @@ export function TableView({
             className={selectedRow === rowIndex ? 'selected' : ''}
             onClick={() => onSelectRow(rowIndex)}
           >
-            <th>{rowOffset + rowIndex + 1}</th>
+            <th className="sticky-row-number">{rowOffset + rowIndex + 1}</th>
             {visibleColumnIndexes.map((columnIndex) => {const value=item.values[columnIndex]
               const editing = editingCell?.row === rowIndex && editingCell.column === columnIndex
               return <td
                 key={columnIndex}
-                className={value === null ? 'cell-null' : ''}
+                className={`${value === null ? 'cell-null' : ''} ${columnIndex===stickyKeyColumnIndex?'sticky-key-column':''}`}
                 onDoubleClick={() => editable && setEditingCell({row: rowIndex, column: columnIndex})}
               >
                 {editing
@@ -299,12 +300,12 @@ export function TableView({
 
     <div className="table-data-bar">
       <div className="table-row-tools">
-        <button type="button" className="icon-tool" aria-label="新增行" title="新增行" disabled={!editable} onClick={addRow}><Icon name="plus" /></button>
-        <button type="button" className="icon-tool" aria-label="删除行" title="删除行" disabled={!editable || selectedRow === null} onClick={deleteSelectedRow}><Icon name="minus" /></button>
-        <button type="button" className="icon-tool" aria-label="应用修改" title="应用修改" disabled={!editable || !dirty} onClick={() => void applyDraft()}><Icon name="check" /></button>
-        <button type="button" className="icon-tool" aria-label="放弃修改" title="放弃修改" disabled={!dirty} onClick={onDiscard}><Icon name="close" /></button>
-        <button type="button" className="icon-tool" aria-label="刷新" title="刷新" disabled={status === 'running'} onClick={onRefresh}><Icon name="refresh" /></button>
-        <button type="button" className="icon-tool" aria-label="停止" title="停止" disabled={status !== 'running'} onClick={onStop}><Icon name="stop" /></button>
+        <button type="button" className="icon-tool table-text-tool" aria-label="新增行" disabled={!editable} onClick={addRow}><Icon name="plus" />新增</button>
+        <button type="button" className="icon-tool table-text-tool" aria-label="删除行" disabled={!editable || selectedRow === null} onClick={deleteSelectedRow}><Icon name="minus" />删除</button>
+        <button type="button" className="icon-tool table-text-tool" aria-label="应用修改" disabled={!editable || !dirty} onClick={() => void applyDraft()}><Icon name="check" />应用</button>
+        <button type="button" className="icon-tool table-text-tool" aria-label="放弃修改" disabled={!dirty} onClick={onDiscard}><Icon name="close" />放弃</button>
+        <button type="button" className="icon-tool table-text-tool" aria-label="刷新" disabled={status === 'running'} onClick={onRefresh}><Icon name="refresh" />刷新</button>
+        <button type="button" className="icon-tool table-text-tool" aria-label="停止" disabled={status !== 'running'} onClick={onStop}><Icon name="stop" />停止</button>
       </div>
       <div className="table-sql-bar">
         <code>{sql.replace(/\s+/g, ' ').trim()}</code>

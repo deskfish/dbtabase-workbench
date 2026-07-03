@@ -66,6 +66,22 @@ it('renders the global database workbench header', () => {
   expect(screen.getByRole('banner')).toHaveTextContent('测试员')
 })
 
+it('offers useful disconnected workspace actions', async () => {
+  render(<App api={fakeAPI()} sessionBootstrap={Promise.resolve('session')} />)
+  expect(await screen.findByText('先连接数据库，再开始工作')).toBeVisible()
+  await userEvent.click(screen.getByRole('button',{name:'选择连接'}))
+  expect(screen.getByRole('searchbox',{name:'搜索个人连接'})).toHaveFocus()
+  expect(screen.getAllByRole('button',{name:'新建连接'}).length).toBeGreaterThan(0)
+  expect(screen.getAllByRole('button',{name:/团队连接/}).length).toBeGreaterThan(0)
+})
+
+it('uses a comment-only SQL guide by default', async () => {
+  render(<App api={fakeAPI()} sessionBootstrap={Promise.resolve('session')} initialConnectionId="connection" />)
+  expect(await screen.findByRole('textbox',{name:'SQL 编辑器'})).toHaveValue('-- 从左侧选择一张表，或在这里输入 SQL')
+  expect(screen.getByRole('button',{name:'执行 SQL'})).toHaveTextContent('运行')
+  expect(screen.getByText('⌘/Ctrl Enter')).toBeVisible()
+})
+
 it('executes SQL and renders returned rows', async () => {
   const api = fakeAPI()
   render(<App api={api} sessionBootstrap={Promise.resolve('session')} initialConnectionId="connection" initialSQL="SELECT id, name FROM people" />)

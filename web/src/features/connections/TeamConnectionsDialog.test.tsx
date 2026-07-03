@@ -3,6 +3,16 @@ import userEvent from '@testing-library/user-event'
 import {expect, it, vi} from 'vitest'
 import {TeamConnectionsDialog} from './TeamConnectionsDialog'
 
+const team={id:'t1',name:'Shared DB',driver:'postgres' as const,host:'10.0.0.2',port:5432,database:'app',user:'db',tlsMode:'prefer' as const,sharedBy:'alice'}
+
+it('shows completion when all team connections already exist personally', async () => {
+  render(<TeamConnectionsDialog connections={[team]} personalConnections={[{...team,id:'p1'}]} onCopy={()=>{}} onClose={()=>{}} />)
+  expect(screen.getByText('团队连接均已添加到个人列表')).toBeVisible()
+  expect(screen.queryByRole('button',{name:/复制选中/})).not.toBeInTheDocument()
+  await userEvent.click(screen.getByRole('button',{name:'查看已在个人'}))
+  expect(screen.getByText('Shared DB')).toBeVisible()
+})
+
 it('copies a team connection without import language', async () => {
   const onCopy = vi.fn()
   render(<TeamConnectionsDialog connections={[{id:'t1',name:'Shared DB',driver:'postgres',host:'10.0.0.2',port:5432,database:'app',user:'db',tlsMode:'prefer',sharedBy:'alice'}]} personalConnections={[]} onCopy={onCopy} onClose={()=>{}} />)

@@ -150,12 +150,12 @@ export function ConnectionSidebar({
       <div className="panel-heading connection-panel-heading">
         <div><span>个人连接</span><small>{savedConnections.length} 个连接</small></div>
         <div className="connection-heading-actions">
-          <button type="button" className="team-entry" onClick={()=>setTeamOpen(true)}>团队连接 <b>{teamConnectionCount}</b></button>
+          <button type="button" className="team-entry" data-team-connections onClick={()=>setTeamOpen(true)}>团队连接 <b>{teamConnectionCount}</b></button>
         </div>
       </div>
       <label className="connection-search">
         <Icon name="search" />
-        <input type="search" aria-label="搜索个人连接" placeholder="搜索个人连接 / 主机 / 数据库" value={connectionSearch} onChange={(event) => setConnectionSearch(event.target.value)} />
+        <input type="search" data-connection-search aria-label="搜索个人连接" placeholder="搜索个人连接 / 主机 / 数据库" value={connectionSearch} onChange={(event) => setConnectionSearch(event.target.value)} />
       </label>
       <div className="connection-list" role="list">
         {savedConnections.length === 0 && <div className="empty-state compact">还没有保存的连接，请使用下方工具栏新建</div>}

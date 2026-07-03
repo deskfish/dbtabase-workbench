@@ -50,6 +50,10 @@ it('keeps a table without a unique key read-only', () => {
 it('shows navicat style row tools when editable', () => {
   renderTable({uniqueKey: ['id']})
   expect(screen.getByRole('button', {name: '新增行'})).toBeEnabled()
+  expect(screen.getByRole('button', {name: '新增行'})).toHaveTextContent('新增')
+  expect(screen.getByRole('button', {name: '刷新'})).toHaveTextContent('刷新')
+  expect(screen.getByRole('columnheader', {name:'#'})).toHaveClass('sticky-row-number')
+  expect(screen.getByRole('columnheader', {name:/id/i})).toHaveClass('sticky-key-column')
   expect(screen.getByRole('button', {name: '应用修改'})).toBeDisabled()
   expect(screen.getByText(/SELECT \* FROM public.events/i)).toBeVisible()
 })

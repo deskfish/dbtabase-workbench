@@ -58,12 +58,13 @@ import { CreateTableDialog } from '../features/workspace/CreateTableDialog'
 import { buildCreateDatabaseSQL, buildCreateTableSQL, buildDropDatabaseSQL, buildDropTableSQL, extractDropConfirmationTarget, isValidSqlIdent, type CreateTableColumn } from '../features/workspace/ddl'
 import { preserveResultColumns, resolveTableColumns } from '../features/table/tableColumns'
 import { SchemaWorkspace } from '../features/schema/SchemaWorkspace'
+import {SQL_GUIDE,sqlForSelectedTable} from '../features/editor/sqlTemplate'
 
 export type WorkbenchAPI = Pick<APIClient,
   'createSession'|'connect'|'disconnect'|'listDatabases'|'switchDatabase'|'metadata'|'startQuery'|'queryResult'|'cancelQuery'|'exportCSV'|'beginTransaction'|'finishTransaction'|'mutate'|'tableDetail'|'previewSchema'|'executeSchema'|'capabilities'|'mongoFind'|'mongoAggregate'|'mongoMutate'|'mongoCollectionDetail'|'mongoCreateIndex'|'mongoDropIndex'|'redisScanKeys'|'redisGetKey'|'redisSaveKey'|'redisDeleteKey'|'redisSetTTL'|'redisCommands'
 > & ConnectionRegistryAPI
 
-export function App({api, sessionBootstrap, initialConnectionId = '', initialSQL = 'SELECT *\nFROM your_table\nLIMIT 200;'}: {api:WorkbenchAPI; sessionBootstrap?:Promise<string>; initialConnectionId?:string; initialSQL?:string}) {
+export function App({api, sessionBootstrap, initialConnectionId = '', initialSQL = SQL_GUIDE}: {api:WorkbenchAPI; sessionBootstrap?:Promise<string>; initialConnectionId?:string; initialSQL?:string}) {
   const initialQueryTab = useMemo(() => createQueryTab(initialSQL), [initialSQL])
   const [connectionId, setConnectionId] = useState(initialConnectionId)
   const [activeSavedId, setActiveSavedId] = useState('')
@@ -92,6 +93,7 @@ export function App({api, sessionBootstrap, initialConnectionId = '', initialSQL
   const [queryTable, setQueryTable] = useState('')
   const [switchingDatabase, setSwitchingDatabase] = useState(false)
   const [structureTabId, setStructureTabId] = useState('')
+  const [dirtySchemaTabs,setDirtySchemaTabs]=useState<Set<string>>(()=>new Set())
   const [redisConsoleCounter, setRedisConsoleCounter] = useState(2)
   const [selectedRedisKey, setSelectedRedisKey] = useState('')
   const [createTableDialog, setCreateTableDialog] = useState<{database: string} | null>(null)
@@ -185,6 +187,12 @@ export function App({api, sessionBootstrap, initialConnectionId = '', initialSQL
 
   useEffect(() => { void refreshConnections() }, [refreshConnections])
   useEffect(() => { void refreshTeamConnections() }, [refreshTeamConnections])
+
+  useEffect(()=>{
+    const protect=(event:BeforeUnloadEvent)=>{if(dirtySchemaTabs.size){event.preventDefault();event.returnValue=''}}
+    window.addEventListener('beforeunload',protect)
+    return()=>window.removeEventListener('beforeunload',protect)
+  },[dirtySchemaTabs])
 
   useEffect(() => {
     const blockContextMenu = (event: MouseEvent) => {
@@ -638,6 +646,7 @@ export function App({api, sessionBootstrap, initialConnectionId = '', initialSQL
   }
 
   function closeTab(tabId: string) {
+    if(dirtySchemaTabs.has(tabId)&&!window.confirm('表结构有未保存修改，确认放弃？'))return
     if (tabs.length === 1) return
     setTabs((current) => {
       const next = current.filter((tab) => tab.id !== tabId)
@@ -695,7 +704,7 @@ export function App({api, sessionBootstrap, initialConnectionId = '', initialSQL
   return <div className={`app-shell ${connectionBarCollapsed ? 'connection-collapsed' : ''} ${connected ? 'is-connected' : ''}`} style={shellStyle}>
     <a className="skip-link" href="#sql-editor">跳到 SQL 编辑器</a>
     <header className="topbar">
-      <div className="brand"><BrandMark size={32} /><div><h1>数据库管理</h1><p>Database Workbench</p></div></div>
+      <div className="brand"><BrandMark size={32} /><div><h1>数据库管理</h1><p>Database Workbench · MySQL / PostgreSQL / MongoDB / Redis</p></div></div>
       <div className="topbar-actions">
         {connected && activeConnection && <span>{driverLabel(activeConnection.driver)}</span>}
         <span className={`connection-pill ${connected?'connected':''}`}><span/>{connected?'已连接':'未连接'}{activeConnection?` · ${activeConnection.name}`:''}</span>
@@ -754,10 +763,12 @@ export function App({api, sessionBootstrap, initialConnectionId = '', initialSQL
 
     <main className={`workspace ${activeTab?.kind === 'table' || activeTab?.kind === 'mongo-document' || activeTab?.kind === 'redis-key' ? 'mode-table' : 'mode-query'}`}>
       <div className="status-rail" aria-hidden="true" />
-      <nav className="tabbar" aria-label="工作区标签页">
-        {tabs.map((tab) => <button
-          key={tab.id}
+      <nav className="tabbar" aria-label="工作区标签页" role="tablist">
+        {tabs.map((tab) => <div className="tab-shell" key={tab.id}><button
           type="button"
+          role="tab"
+          aria-selected={tab.id === activeTabId}
+          tabIndex={tab.id === activeTabId ? 0 : -1}
           className={`tab ${tab.id === activeTabId ? 'active' : ''} ${tab.kind === 'table' ? 'tab-table' : 'tab-query'}`}
           onClick={() => {
             setActiveTabId(tab.id)
@@ -765,17 +776,28 @@ export function App({api, sessionBootstrap, initialConnectionId = '', initialSQL
               void reloadTableTab(tab.id, {table: tab.table})
             }
           }}
+          onKeyDown={(event)=>{
+            const index=tabs.findIndex(item=>item.id===tab.id)
+            let target=index
+            if(event.key==='ArrowRight'||event.key==='ArrowDown')target=(index+1)%tabs.length
+            else if(event.key==='ArrowLeft'||event.key==='ArrowUp')target=(index-1+tabs.length)%tabs.length
+            else if(event.key==='Home')target=0
+            else if(event.key==='End')target=tabs.length-1
+            else return
+            event.preventDefault();setActiveTabId(tabs[target].id)
+            requestAnimationFrame(()=>document.querySelectorAll<HTMLElement>('[role="tab"]')[target]?.focus())
+          }}
         >
           <span>{tab.title}</span>
-          <i
-            role="button"
+        </button><button
+            type="button"
+            className="tab-close"
             aria-label={`关闭 ${tab.title}`}
             onClick={(event) => {
               event.stopPropagation()
               closeTab(tab.id)
             }}
-          ><Icon name="close" /></i>
-        </button>)}
+          ><Icon name="close" /></button></div>)}
         <button type="button" className="new-tab" aria-label="新建标签" onClick={() => {
           if (isRedisDriver(activeConnection?.driver ?? '')) openRedisConsole()
           else if (isMongoDriver(activeConnection?.driver ?? '')) openQueryTab('[\n  { "$match": {} },\n  { "$limit": 50 }\n]')
@@ -820,8 +842,8 @@ export function App({api, sessionBootstrap, initialConnectionId = '', initialSQL
 
       {activeTab?.kind === 'table' && <>
         <section className="table-pane" aria-label="表数据">
-          <nav className="table-workspace-tabs"><button className={structureTabId===activeTab.id?'':'active'} onClick={()=>setStructureTabId('')}>数据预览</button><button className={structureTabId===activeTab.id?'active':''} onClick={()=>setStructureTabId(activeTab.id)}>表结构</button></nav>
-          {structureTabId===activeTab.id?<SchemaWorkspace api={api as APIClient} connectionId={connectionId} driver={sqlDriverOrDefault(activeConnection?.driver ?? '')} schema={activeTab.table.schema||activeDatabase} table={activeTab.table.name} onSaved={()=>{void refreshMetadata()}}/>:<TableView
+          <nav className="table-workspace-tabs" role="tablist" aria-label="表视图"><button role="tab" aria-selected={structureTabId!==activeTab.id} className={structureTabId===activeTab.id?'':'active'} onClick={()=>{if(!dirtySchemaTabs.has(activeTab.id)||window.confirm('表结构有未保存修改，确认放弃？'))setStructureTabId('')}}>数据预览</button><button role="tab" aria-selected={structureTabId===activeTab.id} className={structureTabId===activeTab.id?'active':''} onClick={()=>setStructureTabId(activeTab.id)}>表结构</button></nav>
+          {structureTabId===activeTab.id?<SchemaWorkspace api={api as APIClient} connectionId={connectionId} driver={sqlDriverOrDefault(activeConnection?.driver ?? '')} schema={activeTab.table.schema||activeDatabase} table={activeTab.table.name} onDirtyChange={(dirty)=>setDirtySchemaTabs(current=>{const next=new Set(current);if(dirty)next.add(activeTab.id);else next.delete(activeTab.id);return next})} onSaved={()=>{void refreshMetadata()}}/>:<TableView
             schema={activeTab.table.schema}
             table={activeTab.table.name}
             columns={columns}
@@ -861,13 +883,13 @@ export function App({api, sessionBootstrap, initialConnectionId = '', initialSQL
         </section>
       </>}
 
-      {activeTab?.kind === 'query' && connected && activeConnection && isSqlDriver(activeConnection.driver) && <>
+      {activeTab?.kind === 'query' && connected && (!activeConnection || isSqlDriver(activeConnection.driver)) && <>
         <div className="query-toolbar">
+          <button type="button" aria-label="执行 SQL" title="执行 SQL（Ctrl/Cmd + Enter）" className="button primary button-with-icon run-query-button" onClick={execute} disabled={!connected || status === 'running'}><Icon name="play" />运行 <kbd>⌘/Ctrl Enter</kbd></button>
           <label className="query-context">数据库<SelectControl className="query-select" ariaLabel="查询数据库" value={activeDatabase} disabled={!connected} options={databases.map(name=>({value:name,label:name}))} onChange={value=>void switchDatabase(value)}/></label>
           <label className="query-context">Schema<SelectControl className="query-select" ariaLabel="查询 Schema" value={querySchema||objects.find(x=>x.kind==='table')?.schema||''} options={[...new Set(objects.filter(x=>x.kind==='table').map(x=>x.schema||''))].map(name=>({value:name,label:name}))} onChange={setQuerySchema}/></label>
-          <label className="query-context">表<SelectControl className="query-select table-query-select" ariaLabel="查询表" value={queryTable} options={[{value:'',label:'选择表'},...objects.filter(x=>x.kind==='table').map(x=>({value:qualifiedTableName(x),label:qualifiedTableName(x)}))]} onChange={value=>{setQueryTable(value);const table=objects.find(x=>x.kind==='table'&&qualifiedTableName(x)===value);if(table)updateTab(activeTab.id,{sql:defaultSelectSQL(table, sqlDriverOrDefault(activeConnection?.driver ?? ''))})}}/></label>
+          <label className="query-context">表<SelectControl className="query-select table-query-select" ariaLabel="查询表" value={queryTable} options={[{value:'',label:'选择表'},...objects.filter(x=>x.kind==='table').map(x=>({value:qualifiedTableName(x),label:qualifiedTableName(x)}))]} onChange={value=>{setQueryTable(value);const table=objects.find(x=>x.kind==='table'&&qualifiedTableName(x)===value);if(table)updateTab(activeTab.id,{sql:sqlForSelectedTable(activeTab.sql,defaultSelectSQL(table, sqlDriverOrDefault(activeConnection?.driver ?? '')))})}}/></label>
           <span className="toolbar-separator" />
-          <button type="button" aria-label="执行 SQL" className="button primary button-with-icon" onClick={execute} disabled={!connected || status === 'running'}><Icon name="play" />执行 SQL</button>
           <button type="button" aria-label="停止查询" className="button ghost button-with-icon" disabled={!queryId || status !== 'running'} onClick={() => void api.cancelQuery(connectionId, queryId)}><Icon name="stop" />停止</button>
           <span className="toolbar-separator" />
           <button type="button" className="button ghost" onClick={async () => transaction.open(await api.beginTransaction(connectionId))} disabled={!connected || Boolean(transactionId)}>开始事务</button>
@@ -899,9 +921,15 @@ export function App({api, sessionBootstrap, initialConnectionId = '', initialSQL
       </>}
 
       {!connected && <section className="table-pane workspace-home disconnected-home" aria-label="工作区">
-        <div className="empty-state">
-          <h3>Database Workbench</h3>
-          <p>请从左侧选择一个连接，开始浏览数据库、执行查询或管理数据。</p>
+        <div className="empty-state workspace-onboarding">
+          <span className="onboarding-icon"><Icon name="database" /></span>
+          <h3>先连接数据库，再开始工作</h3>
+          <p>选择已有连接，或者创建一个新的个人连接；团队共享连接也可以直接复制使用。</p>
+          <div className="workspace-onboarding-actions">
+            <button className="button primary" onClick={()=>document.querySelector<HTMLInputElement>('[data-connection-search]')?.focus()}>选择连接</button>
+            <button className="button" onClick={()=>setConnectionDialog('new')}>新建连接</button>
+            <button className="button" onClick={()=>document.querySelector<HTMLButtonElement>('[data-team-connections]')?.click()}>团队连接</button>
+          </div>
         </div>
       </section>}
     </main>
