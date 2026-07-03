@@ -61,9 +61,12 @@ func main() {
 				return err
 			},
 			OpenConnection: database.Open,
+			OpenHandle:     database.OpenHandle,
 			Queries:        queries,
 			Transactions:   transactions,
 			Schema:         schemaService,
+			QueryTimeout:   cfg.QueryTimeout,
+			PageSize:       cfg.PageSize,
 		}),
 		ReadHeaderTimeout: 5 * time.Second,
 		IdleTimeout:       60 * time.Second,

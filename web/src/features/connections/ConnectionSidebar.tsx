@@ -1,10 +1,16 @@
-import { useMemo, useState } from 'react'
+import { useCallback, useMemo, useState, type PointerEvent as ReactPointerEvent } from 'react'
+import type { APIClient } from '../../api/client'
+import type { DriverId } from '../../api/driver'
+import { isMongoDriver, isRedisDriver, isSqlDriver } from '../../api/driver'
 import type { DatabaseObject } from '../../api/types'
 import type { SavedConnection } from '../../storage/connections'
 import type { RegistryConnection } from '../../storage/registryTypes'
+import { dedupeTeamConnections } from '../../storage/teamConnectionMatch'
 import { ContextMenu, type ContextMenuItem } from '../ui/ContextMenu'
 import { DatabaseSwitcher } from './DatabaseSwitcher'
+import { DriverBadge } from './DriverBadge'
 import { ObjectTree } from '../explorer/ObjectTree'
+import { RedisKeyTree } from '../redis/RedisKeyTree'
 import { Icon } from '../ui/Icon'
 import { TeamConnectionsDialog } from './TeamConnectionsDialog'
 
@@ -20,6 +26,10 @@ export function ConnectionSidebar({
   databases,
   switchingDatabase,
   objects,
+  connectionBarCollapsed = false,
+  onToggleConnectionBar,
+  catalogWidth = 260,
+  onCatalogWidthChange,
   onEditProfile,
   onNewConnection,
   onSelectConnection,
@@ -28,13 +38,19 @@ export function ConnectionSidebar({
   onShareConnectionToTeam,
   onCopyTeamConnection,
   onSwitchDatabase,
+  onCreateDatabase,
+  onCreateTable,
+  onDeleteDatabase,
   onOpenTable,
-  onNewQueryFromTable,
-  onCopyTableName,
-  onRefreshTable,
-  onCopyColumnName,
-  onNewQueryFromColumn,
+  onOpenTableStructure,
+  onNewQuery,
+  onDeleteTable,
   selectedTableKey = '',
+  selectedRedisKey = '',
+  connectionId = '',
+  api,
+  onOpenRedisKey,
+  onOpenRedisConsole,
 }: {
   nickname: string
   savedConnections: SavedConnection[]
@@ -42,11 +58,17 @@ export function ConnectionSidebar({
   activeSavedId: string
   connected: boolean
   connectingId: string
-  activeDriver: 'mysql' | 'postgres' | ''
+  activeDriver: DriverId | ''
   activeDatabase: string
   databases: string[]
   switchingDatabase: boolean
   objects: DatabaseObject[]
+  connectionId?: string
+  api?: Pick<APIClient, 'redisScanKeys'>
+  connectionBarCollapsed?: boolean
+  onToggleConnectionBar?: () => void
+  catalogWidth?: number
+  onCatalogWidthChange?: (width: number) => void
   onEditProfile: () => void
   onNewConnection: () => void
   onSelectConnection: (saved: SavedConnection) => void
@@ -55,20 +77,60 @@ export function ConnectionSidebar({
   onShareConnectionToTeam: (saved: SavedConnection) => void
   onCopyTeamConnection: (teamId: string) => void
   onSwitchDatabase: (database: string) => void
+  onCreateDatabase: (saved: SavedConnection) => void
+  onCreateTable: (database: string) => void
+  onDeleteDatabase: (database: string) => void
   onOpenTable: (table: DatabaseObject) => void
-  onNewQueryFromTable: (table: DatabaseObject) => void
-  onCopyTableName: (table: DatabaseObject) => void
-  onRefreshTable: (table: DatabaseObject) => void
-  onCopyColumnName: (table: DatabaseObject, column: DatabaseObject) => void
-  onNewQueryFromColumn: (table: DatabaseObject, column: DatabaseObject) => void
+  onOpenTableStructure: (table: DatabaseObject) => void
+  onNewQuery: (table: DatabaseObject) => void
+  onDeleteTable: (table: DatabaseObject) => void
+  onOpenRedisKey?: (key: string) => void
+  onOpenRedisConsole?: () => void
   selectedTableKey?: string
+  selectedRedisKey?: string
 }) {
+  const teamConnectionCount = useMemo(() => dedupeTeamConnections(teamConnections).length, [teamConnections])
   const tableCount = objects.filter((item) => item.kind === 'table').length
+  const objectLabel = isMongoDriver(activeDriver) ? '集合' : isRedisDriver(activeDriver) ? '键' : '表'
+  const objectCountLabel = isRedisDriver(activeDriver) ? 'SCAN 浏览' : `${tableCount} ${objectLabel}`
   const [teamOpen, setTeamOpen] = useState(false)
   const [connectionSearch, setConnectionSearch] = useState('')
   const [connectionMenu, setConnectionMenu] = useState<{saved: SavedConnection; x: number; y: number} | null>(null)
+
+  const startCatalogResize = useCallback((event: ReactPointerEvent<HTMLDivElement>) => {
+    if (!onCatalogWidthChange) return
+    event.preventDefault()
+    const handle = event.currentTarget
+    const startX = event.clientX
+    const startWidth = catalogWidth
+    handle.setPointerCapture(event.pointerId)
+
+    const onMove = (moveEvent: PointerEvent) => {
+      onCatalogWidthChange(Math.min(520, Math.max(180, startWidth + (moveEvent.clientX - startX))))
+    }
+
+    const onUp = () => {
+      document.body.style.cursor = ''
+      document.body.style.userSelect = ''
+      handle.releasePointerCapture(event.pointerId)
+      window.removeEventListener('pointermove', onMove)
+      window.removeEventListener('pointerup', onUp)
+    }
+
+    document.body.style.cursor = 'col-resize'
+    document.body.style.userSelect = 'none'
+    window.addEventListener('pointermove', onMove)
+    window.addEventListener('pointerup', onUp)
+  }, [catalogWidth, onCatalogWidthChange])
+  const openConnectionMenu = useCallback((saved: SavedConnection, anchor: HTMLElement) => {
+    const rect = anchor.getBoundingClientRect()
+    setConnectionMenu({saved, x: rect.right, y: rect.bottom})
+  }, [])
+  const canCreateDatabase = Boolean(connectionMenu && connectionMenu.saved.id === activeSavedId && connected)
   const connectionMenuItems: ContextMenuItem[] = connectionMenu
     ? [
+      {label: '新建数据库', action: () => onCreateDatabase(connectionMenu.saved), disabled: !canCreateDatabase},
+      {separator: true},
       {label: '共享到团队', action: () => onShareConnectionToTeam(connectionMenu.saved)},
       {separator: true},
       {label: '编辑连接', action: () => onEditConnection(connectionMenu.saved)},
@@ -83,35 +145,28 @@ export function ConnectionSidebar({
       .some((value) => value.toLowerCase().includes(query)))
   }, [connectionSearch, savedConnections])
 
-  return <><aside className="sidebar navicat-sidebar connection-sidebar" aria-label="连接导航">
-    <div className="sidebar-profile">
-      <button type="button" className="profile-chip" onClick={onEditProfile} title="编辑昵称与界面配色">
-        <span className="profile-avatar">{nickname.slice(0, 1).toUpperCase()}</span>
-        <span className="profile-meta">
-          <strong>{nickname}</strong>
-          <small>{savedConnections.length} 个个人连接 · 服务端同步</small>
-        </span>
-      </button>
-    </div>
-
-    <div className="connection-panel">
+  return <><aside className={`sidebar navicat-sidebar connection-sidebar ${connectionBarCollapsed ? 'collapsed' : ''}`} aria-label="连接导航">
+    {!connectionBarCollapsed && <div className="connection-panel">
       <div className="panel-heading connection-panel-heading">
         <div><span>个人连接</span><small>{savedConnections.length} 个连接</small></div>
-        <div className="connection-heading-actions"><button type="button" className="team-entry" onClick={()=>setTeamOpen(true)}>团队连接 <b>{teamConnections.length}</b></button><button type="button" aria-label="新建连接" className="icon-button" onClick={onNewConnection}><Icon name="plus" /></button></div>
+        <div className="connection-heading-actions">
+          <button type="button" className="team-entry" onClick={()=>setTeamOpen(true)}>团队连接 <b>{teamConnectionCount}</b></button>
+        </div>
       </div>
       <label className="connection-search">
         <Icon name="search" />
         <input type="search" aria-label="搜索个人连接" placeholder="搜索个人连接 / 主机 / 数据库" value={connectionSearch} onChange={(event) => setConnectionSearch(event.target.value)} />
       </label>
       <div className="connection-list" role="list">
-        {savedConnections.length === 0 && <div className="empty-state compact">还没有保存的连接，请从右上角新建</div>}
+        {savedConnections.length === 0 && <div className="empty-state compact">还没有保存的连接，请使用下方工具栏新建</div>}
         {savedConnections.length > 0 && visibleConnections.length === 0 && <div className="empty-state compact">没有匹配的个人连接</div>}
         {visibleConnections.map((saved) => {
           const active = saved.id === activeSavedId
           const busy = connectingId === saved.id
+          const online = active && connected && !busy
           return <div
             key={saved.id}
-            className={`connection-item ${active ? 'active' : ''} ${busy ? 'busy' : ''}`}
+            className={`connection-card ${active ? 'active' : ''} ${busy ? 'busy' : ''}`}
             role="listitem"
             onContextMenu={(event) => {
               event.preventDefault()
@@ -120,20 +175,33 @@ export function ConnectionSidebar({
           >
             <button
               type="button"
-              className="connection-main"
+              className="connection-card-main"
               aria-label={`连接 ${saved.name}`}
               aria-current={active ? 'true' : undefined}
               disabled={Boolean(connectingId) && !busy}
               onClick={() => onSelectConnection(saved)}
             >
-              <span className={`connection-dot ${saved.driver}`} aria-hidden="true" />
-              <span className="connection-copy">
-                <strong>{saved.name}</strong>
-                <small>{saved.driver === 'postgres' ? 'PostgreSQL' : 'MySQL'} · {saved.host}:{saved.port}</small>
-                <small>{active && connected ? activeDatabase || saved.database : saved.database || saved.user}</small>
-              </span>
-              {busy && <span className="connection-status">连接中…</span>}
-              {active && connected && !busy && <span className="connection-status online">已连接</span>}
+              <div className="connection-card-head">
+                <span className={`connection-dot ${online ? 'online' : saved.driver}`} aria-hidden="true" />
+                <strong className="connection-card-name">{saved.name}</strong>
+                <DriverBadge driver={saved.driver} />
+              </div>
+              <div className="connection-card-foot">
+                <span className="connection-card-host">{saved.host}:{saved.port}</span>
+                {busy && <span className="connection-card-status">连接中…</span>}
+                {online && <span className="connection-card-status online">已连接</span>}
+              </div>
+            </button>
+            <button
+              type="button"
+              className="connection-card-menu"
+              aria-label={`${saved.name} 更多操作`}
+              onClick={(event) => {
+                event.stopPropagation()
+                openConnectionMenu(saved, event.currentTarget)
+              }}
+            >
+              <Icon name="more-vertical" />
             </button>
           </div>
         })}
@@ -145,39 +213,57 @@ export function ConnectionSidebar({
         <button type="button" aria-label="删除当前连接" title="删除当前连接" disabled={!activeConnection} onClick={() => activeConnection && onDeleteConnection(activeConnection)}><Icon name="trash" /></button>
         <button type="button" aria-label="个人设置" title="个人设置" onClick={onEditProfile}><Icon name="settings" /></button>
       </footer>
+    </div>}
+    </aside>
+    <div className="sidebar-split-rail">
+      <button
+        type="button"
+        className={`sidebar-edge-toggle ${connectionBarCollapsed ? 'is-collapsed' : 'is-expanded'}`}
+        aria-label={connectionBarCollapsed ? '展开连接栏' : '收起连接栏'}
+        title={connectionBarCollapsed ? '展开连接栏' : '收起连接栏'}
+        onClick={onToggleConnectionBar}
+      ><Icon name={connectionBarCollapsed ? 'chevron-right' : 'chevron-left'} /></button>
     </div>
-
-    </aside><aside className="sidebar catalog-sidebar" aria-label="数据库目录">
-    {connected && activeDriver && <DatabaseSwitcher
+    {connected && <aside className="sidebar catalog-sidebar" aria-label="数据库目录">
+    {activeDriver && <DatabaseSwitcher
       driver={activeDriver}
       current={activeDatabase}
       databases={databases}
       busy={switchingDatabase || Boolean(connectingId)}
       onSwitch={onSwitchDatabase}
+      onCreateTable={onCreateTable}
+      onDeleteDatabase={onDeleteDatabase}
     />}
 
     <div className="object-panel">
       <div className="panel-heading">
-        <div><span>对象</span><small>{connected ? `${tableCount} 张表 · ${activeDatabase}` : '请先选择连接'}</small></div>
+        <div><span>对象</span><small>{`${objectCountLabel} · ${activeDatabase}`}</small></div>
+        {isRedisDriver(activeDriver) && onOpenRedisConsole && <button type="button" className="button compact" onClick={onOpenRedisConsole}>命令台</button>}
       </div>
-      {!connected
-        ? <div className="empty-state compact">在上方选择一个连接后，这里会展示表和字段</div>
-        : switchingDatabase
-          ? <div className="empty-state compact">正在切换数据库…</div>
+      {switchingDatabase
+        ? <div className="empty-state compact">正在切换数据库…</div>
+        : isRedisDriver(activeDriver) && api && onOpenRedisKey
+          ? <RedisKeyTree api={api} connectionId={connectionId} selectedKey={selectedRedisKey} onOpenKey={(item) => onOpenRedisKey(item.key)} />
           : <ObjectTree
-            objects={objects}
-            onOpenTable={onOpenTable}
-            onNewQueryFromTable={onNewQueryFromTable}
-            onCopyTableName={onCopyTableName}
-            onRefreshTable={onRefreshTable}
-            onCopyColumnName={onCopyColumnName}
-            onNewQueryFromColumn={onNewQueryFromColumn}
-            selectedTableKey={selectedTableKey}
-          />}
+          objects={objects}
+          objectLabel={objectLabel}
+          onOpenTable={onOpenTable}
+          onOpenTableStructure={onOpenTableStructure}
+          onNewQuery={onNewQuery}
+          onDeleteTable={onDeleteTable}
+          selectedTableKey={selectedTableKey}
+          sqlFeatures={isSqlDriver(activeDriver)}
+        />}
     </div>
-
-    </aside>
+    <div
+      className="catalog-resize-handle"
+      role="separator"
+      aria-orientation="vertical"
+      aria-label="调整目录栏宽度"
+      onPointerDown={startCatalogResize}
+    />
+    </aside>}
     {connectionMenu && <ContextMenu x={connectionMenu.x} y={connectionMenu.y} items={connectionMenuItems} onClose={() => setConnectionMenu(null)} />}
-    {teamOpen && <TeamConnectionsDialog connections={teamConnections} personalConnections={savedConnections} onCopy={onCopyTeamConnection} onClose={()=>setTeamOpen(false)}/>} 
+    {teamOpen && <TeamConnectionsDialog connections={teamConnections} personalConnections={savedConnections} onCopy={onCopyTeamConnection} onClose={()=>setTeamOpen(false)}/>}
   </>
 }

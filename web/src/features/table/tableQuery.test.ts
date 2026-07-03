@@ -39,3 +39,9 @@ it('ignores disabled or incomplete rules', () => {
   ]
   expect(buildWhereClause('postgres', rules)).toBe(`"name" = 'Bob'`)
 })
+
+it('omits limit when page size is zero', () => {
+  expect(buildTableSelectSQL(table, 'postgres', {pageSize: 0})).toBe(
+    'SELECT *\nFROM public.people;',
+  )
+})

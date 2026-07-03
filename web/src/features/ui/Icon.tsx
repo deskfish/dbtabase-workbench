@@ -1,6 +1,6 @@
 import type { ReactNode } from 'react'
 
-export type IconName = 'filter'|'search'|'share'|'settings'|'plus'|'minus'|'check'|'close'|'refresh'|'stop'|'play'|'download'|'edit'|'trash'|'chevron-left'|'chevrons-left'|'chevron-right'|'chevron-down'
+export type IconName = 'filter'|'search'|'share'|'settings'|'plus'|'minus'|'check'|'close'|'refresh'|'stop'|'play'|'download'|'edit'|'trash'|'chevron-left'|'chevrons-left'|'chevron-right'|'chevron-down'|'more-vertical'|'server'|'database'
 
 const paths: Record<IconName, ReactNode> = {
   filter: <><path d="M4 5h16l-6.5 7.2V18l-3 1.5v-7.3z" /></>,
@@ -21,6 +21,9 @@ const paths: Record<IconName, ReactNode> = {
   'chevrons-left': <><path d="m13 18-6-6 6-6m5 12-6-6 6-6" /></>,
   'chevron-right': <><path d="m9 18 6-6-6-6" /></>,
   'chevron-down': <><path d="m6 9 6 6 6-6" /></>,
+  'more-vertical': <><circle cx="12" cy="5" r="1.5" fill="currentColor" stroke="none"/><circle cx="12" cy="12" r="1.5" fill="currentColor" stroke="none"/><circle cx="12" cy="19" r="1.5" fill="currentColor" stroke="none"/></>,
+  server: <><rect x="4" y="4" width="16" height="5" rx="1"/><rect x="4" y="11" width="16" height="5" rx="1"/><circle cx="7" cy="6.5" r=".8" fill="currentColor" stroke="none"/><circle cx="7" cy="13.5" r=".8" fill="currentColor" stroke="none"/></>,
+  database: <><ellipse cx="12" cy="6" rx="7" ry="2.5"/><path d="M5 6v5c0 1.4 3.1 2.5 7 2.5s7-1.1 7-2.5V6"/><path d="M5 11v5c0 1.4 3.1 2.5 7 2.5s7-1.1 7-2.5v-5"/></>,
 }
 
 export function Icon({name}: {name: IconName}) {

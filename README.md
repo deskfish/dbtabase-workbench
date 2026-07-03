@@ -11,7 +11,7 @@
 - 受保护的单行插入、更新与删除
 - 无 `WHERE` 写操作以及 `DROP`/`TRUNCATE` 二次确认
 - IndexedDB 加密保存连接：PBKDF2-SHA-256 600,000 次 + AES-256-GCM
-- CIDR、域名后缀和端口目标允许列表，防止服务成为网络扫描跳板
+- 可选 CIDR、域名后缀和端口目标允许列表（默认不限制，按需收紧）
 
 ## 本地验证
 
@@ -22,7 +22,7 @@ make verify
 启动开发服务：
 
 ```bash
-cd api && DBW_ALLOWED_CIDRS=10.0.0.0/8 go run ./cmd/server
+cd api && go run ./cmd/server
 cd web && npm run dev
 ```
 

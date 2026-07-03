@@ -53,6 +53,20 @@ it('creates a session automatically before connecting', async () => {
   expect(new Headers(request.headers).get('X-Session-ID')).toBe('session-1')
 })
 
+it('recreates the session when the server rejects a stale session id', async () => {
+  const fetcher = vi.fn()
+    .mockResolvedValueOnce(new Response(JSON.stringify({sessionId:'stale-session'}), {status:201, headers:{'Content-Type':'application/json'}}))
+    .mockResolvedValueOnce(new Response(JSON.stringify({error:{code:'invalid_session',message:'会话不存在或已过期'}}), {status:401, headers:{'Content-Type':'application/json'}}))
+    .mockResolvedValueOnce(new Response(JSON.stringify({sessionId:'fresh-session'}), {status:201, headers:{'Content-Type':'application/json'}}))
+    .mockResolvedValueOnce(new Response(JSON.stringify({connectionId:'connection-1', database:'app'}), {status:201, headers:{'Content-Type':'application/json'}}))
+  const client = new APIClient('', fetcher)
+  await client.createSession()
+  await expect(client.connect({driver:'mysql', host:'db.internal', port:3306, database:'app', user:'root', password:'secret', tlsMode:'disabled'})).resolves.toEqual({connectionId:'connection-1', database:'app'})
+  expect(fetcher).toHaveBeenCalledTimes(4)
+  const retryRequest = fetcher.mock.calls[3][1] as RequestInit
+  expect(new Headers(retryRequest.headers).get('X-Session-ID')).toBe('fresh-session')
+})
+
 it('retries transient session initialization failures automatically', async () => {
   const fetcher = vi.fn()
     .mockResolvedValueOnce(new Response(JSON.stringify({error:{code:'unavailable',message:'restarting'}}), {status:503, headers:{'Content-Type':'application/json'}}))

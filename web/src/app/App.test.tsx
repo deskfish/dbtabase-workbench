@@ -30,6 +30,19 @@ function fakeAPI(): WorkbenchAPI {
     tableDetail: vi.fn().mockResolvedValue({table:{schema:'public',name:'call_recording',columns:[],indexes:[],foreignKeys:[]},capabilities:{schemaEdit:true,indexEdit:true,foreignKeyEdit:true,transactionalDDL:true},permissions:[]}),
     previewSchema: vi.fn().mockResolvedValue({statements:[],risks:[],fingerprint:'f',token:'t',expiresAt:1}),
     executeSchema: vi.fn().mockResolvedValue({results:[]}),
+    capabilities: vi.fn().mockResolvedValue({queryLanguage:'sql', supportsSqlWorkbench:true}),
+    mongoFind: vi.fn(),
+    mongoAggregate: vi.fn(),
+    mongoMutate: vi.fn(),
+    mongoCollectionDetail: vi.fn(),
+    mongoCreateIndex: vi.fn(),
+    mongoDropIndex: vi.fn(),
+    redisScanKeys: vi.fn(),
+    redisGetKey: vi.fn(),
+    redisSaveKey: vi.fn(),
+    redisDeleteKey: vi.fn(),
+    redisSetTTL: vi.fn(),
+    redisCommands: vi.fn(),
     listPersonalConnections: vi.fn().mockResolvedValue([]),
     upsertPersonalConnection: vi.fn().mockResolvedValue({}),
     deletePersonalConnection: vi.fn().mockResolvedValue(undefined),
@@ -49,7 +62,7 @@ it('renders the global database workbench header', () => {
   render(<App api={fakeAPI()} sessionBootstrap={Promise.resolve('session')} />)
 
   expect(screen.getByRole('banner')).toHaveTextContent('数据库管理')
-  expect(screen.getByRole('banner')).toHaveTextContent('PostgreSQL / MySQL')
+  expect(screen.getByRole('banner')).toHaveTextContent('MySQL / PostgreSQL / MongoDB / Redis')
   expect(screen.getByRole('banner')).toHaveTextContent('测试员')
 })
 

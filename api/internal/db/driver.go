@@ -20,6 +20,8 @@ type Driver string
 const (
 	MySQL      Driver = "mysql"
 	PostgreSQL Driver = "postgres"
+	MongoDB    Driver = "mongodb"
+	Redis      Driver = "redis"
 )
 
 type ConnectionInput struct {
@@ -32,7 +34,36 @@ type ConnectionInput struct {
 	TLSMode  string `json:"tlsMode"`
 }
 
+func OpenHandle(ctx context.Context, input ConnectionInput) (*Handle, error) {
+	switch input.Driver {
+	case MySQL, PostgreSQL:
+		sqlDB, err := openSQL(ctx, input)
+		if err != nil {
+			return nil, err
+		}
+		return &Handle{Driver: input.Driver, Config: input, SQL: sqlDB}, nil
+	case MongoDB:
+		return openMongo(ctx, input)
+	case Redis:
+		return openRedis(ctx, input)
+	default:
+		return nil, fmt.Errorf("unsupported database driver %q", input.Driver)
+	}
+}
+
 func Open(ctx context.Context, input ConnectionInput) (*sql.DB, error) {
+	handle, err := OpenHandle(ctx, input)
+	if err != nil {
+		return nil, err
+	}
+	if handle.SQL == nil {
+		_ = handle.Close()
+		return nil, fmt.Errorf("unsupported database driver %q", input.Driver)
+	}
+	return handle.SQL, nil
+}
+
+func openSQL(ctx context.Context, input ConnectionInput) (*sql.DB, error) {
 	dsn, err := buildDSN(input)
 	if err != nil {
 		return nil, err

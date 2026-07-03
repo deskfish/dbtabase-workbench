@@ -10,14 +10,12 @@ const objects = [
 
 const handlers = {
   onOpenTable: vi.fn(),
-  onNewQueryFromTable: vi.fn(),
-  onCopyTableName: vi.fn(),
-  onRefreshTable: vi.fn(),
-  onCopyColumnName: vi.fn(),
-  onNewQueryFromColumn: vi.fn(),
+  onOpenTableStructure: vi.fn(),
+  onNewQuery: vi.fn(),
+  onDeleteTable: vi.fn(),
 }
 
-it('keeps columns collapsed by default and opens table on click', async () => {
+it('opens table on click without showing columns', async () => {
   render(<ObjectTree objects={objects} {...handlers} />)
   expect(screen.getByRole('tree')).toBeVisible()
   expect(screen.getByRole('treeitem', {name:/people/})).toBeVisible()
@@ -26,15 +24,23 @@ it('keeps columns collapsed by default and opens table on click', async () => {
   expect(handlers.onOpenTable).toHaveBeenCalledWith(objects[0])
 })
 
-it('expands columns when the expand control is clicked', async () => {
-  render(<ObjectTree objects={objects} {...handlers} />)
-  await userEvent.click(screen.getByRole('button', {name:/展开 people 字段/}))
-  expect(screen.getByText(/^id$/)).toBeVisible()
-})
-
 it('shows table context menu actions', async () => {
   render(<ObjectTree objects={objects} {...handlers} />)
   await userEvent.pointer({keys: '[MouseRight>]', target: screen.getByRole('treeitem', {name:/people/})})
+  await userEvent.click(screen.getByRole('menuitem', {name:'打开表结构'}))
+  expect(handlers.onOpenTableStructure).toHaveBeenCalledWith(objects[0])
+})
+
+it('opens a new query from context menu', async () => {
+  render(<ObjectTree objects={objects} {...handlers} />)
+  await userEvent.pointer({keys: '[MouseRight>]', target: screen.getByRole('treeitem', {name:/people/})})
   await userEvent.click(screen.getByRole('menuitem', {name:'新建查询'}))
-  expect(handlers.onNewQueryFromTable).toHaveBeenCalledWith(objects[0])
+  expect(handlers.onNewQuery).toHaveBeenCalledWith(objects[0])
+})
+
+it('supports delete table from context menu', async () => {
+  render(<ObjectTree objects={objects} {...handlers} />)
+  await userEvent.pointer({keys: '[MouseRight>]', target: screen.getByRole('treeitem', {name:/people/})})
+  await userEvent.click(screen.getByRole('menuitem', {name:'删除表'}))
+  expect(handlers.onDeleteTable).toHaveBeenCalledWith(objects[0])
 })

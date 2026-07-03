@@ -26,8 +26,8 @@ it('allows switching join operator between rows', async () => {
     onApply={() => {}}
     onClear={() => {}}
   />)
-  const joinBtn = screen.getByRole('button', {name: '与下一条件：并且'})
-  expect(joinBtn).toHaveTextContent('并且')
+  const joinBtn = screen.getByRole('button', {name: 'Join with next: and'})
+  expect(joinBtn).toHaveTextContent('and')
   await userEvent.click(joinBtn)
-  expect(screen.getByRole('button', {name: '与下一条件：或者'})).toHaveTextContent('或者')
+  expect(screen.getByRole('button', {name: 'Join with next: or'})).toHaveTextContent('or')
 })

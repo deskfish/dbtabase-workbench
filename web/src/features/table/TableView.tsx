@@ -211,7 +211,7 @@ export function TableView({
     }
   }
 
-  const canGoNext = rows.length >= pageSize || truncated
+  const canGoNext = pageSize > 0 && (rows.length >= pageSize || truncated)
   const rowOffset = (page - 1) * pageSize
   const activeFilterCount = filterRules.filter(isFilterRuleReady).length
   const visibleColumnIndexes=columns.map((_,index)=>index).filter(index=>!hiddenColumns.has(columns[index].name))
@@ -221,7 +221,6 @@ export function TableView({
     {status === 'running' && <div className="table-loading-mask">正在加载数据…</div>}
 
     <div className="table-view-head">
-      <div className="table-identity"><div><strong>{schema?`${schema}.`:''}{table}</strong><small>表 / {columns.length} 字段 · 主键 {uniqueKey.join(', ')||'无'}</small></div><span>{rows.length} 行 · {message}</span></div>
       <div className="table-view-toolbar">
         <button type="button" className={`icon-tool ${showFilter ? 'active' : ''}`} aria-label="筛选" title="筛选" onClick={onToggleFilter}><Icon name="filter" /></button>
         {activeFilterCount > 0 && <span className="table-filter-badge">{activeFilterCount} 条筛选</span>}
@@ -310,19 +309,19 @@ export function TableView({
       <div className="table-sql-bar">
         <code>{sql.replace(/\s+/g, ' ').trim()}</code>
         <div className="table-pagination">
-          <button type="button" className="icon-tool tiny" aria-label="首页" disabled={page <= 1 || status === 'running'} onClick={() => onPageChange(1)}><Icon name="chevrons-left" /></button>
-          <button type="button" className="icon-tool tiny" aria-label="上一页" disabled={page <= 1 || status === 'running'} onClick={() => onPageChange(page - 1)}><Icon name="chevron-left" /></button>
+          <button type="button" className="icon-tool tiny" aria-label="首页" disabled={pageSize <= 0 || page <= 1 || status === 'running'} onClick={() => onPageChange(1)}><Icon name="chevrons-left" /></button>
+          <button type="button" className="icon-tool tiny" aria-label="上一页" disabled={pageSize <= 0 || page <= 1 || status === 'running'} onClick={() => onPageChange(page - 1)}><Icon name="chevron-left" /></button>
           <label className="page-input">
             <input
               type="number"
               min={1}
               value={page}
-              disabled={status === 'running'}
+              disabled={pageSize <= 0 || status === 'running'}
               onChange={(event) => onPageChange(Math.max(1, Number(event.target.value) || 1))}
             />
           </label>
-          <button type="button" className="icon-tool tiny" aria-label="下一页" disabled={!canGoNext || status === 'running'} onClick={() => onPageChange(page + 1)}><Icon name="chevron-right" /></button>
-          <label className="page-size"><span>每页</span><SelectControl className="compact page-size-select" ariaLabel="每页行数" value={String(pageSize)} disabled={status === 'running'} options={[50,100,200,500,1000].map(size=>({value:String(size),label:String(size)}))} onChange={(value)=>onPageSizeChange(Number(value))}/></label>
+          <button type="button" className="icon-tool tiny" aria-label="下一页" disabled={pageSize <= 0 || !canGoNext || status === 'running'} onClick={() => onPageChange(page + 1)}><Icon name="chevron-right" /></button>
+          <label className="page-size"><span>每页</span><SelectControl className="compact page-size-select" ariaLabel="每页行数" value={String(pageSize)} disabled={status === 'running'} options={[50,100,200,500,1000].map(size=>({value:String(size),label:String(size)})).concat({value:'0',label:'所有'})} onChange={(value)=>onPageSizeChange(value === '0' ? 0 : Number(value))}/></label>
         </div>
       </div>
       <footer className={`execution-status table-status ${status}`} aria-live="polite"><span />{message}{truncated ? ' · 已达到结果上限' : ''}</footer>

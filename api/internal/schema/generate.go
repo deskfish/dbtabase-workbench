@@ -33,11 +33,19 @@ func Generate(dialect, schemaName, tableName string, ops []Operation) (Preview, 
 		destructive := false
 		switch op.Kind {
 		case "add_column":
-			def, err := columnDef(q, op.Column)
+			def, err := columnDef(dialect, q, op.Column)
 			if err != nil {
 				return Preview{}, err
 			}
-			sql = fmt.Sprintf("ALTER TABLE %s ADD COLUMN %s", table, def)
+			p.Statements = append(p.Statements, Statement{SQL: fmt.Sprintf("ALTER TABLE %s ADD COLUMN %s", table, def)})
+			if dialect == "postgres" && strings.TrimSpace(op.Column.Comment) != "" {
+				col, e := q(op.Column.Name)
+				if e != nil {
+					return Preview{}, e
+				}
+				p.Statements = append(p.Statements, Statement{SQL: fmt.Sprintf("COMMENT ON COLUMN %s.%s IS %s", table, col, sqlStringLiteral(op.Column.Comment))})
+			}
+			continue
 		case "drop_column":
 			n, err := q(op.Name)
 			if err != nil {
@@ -78,13 +86,59 @@ func Generate(dialect, schemaName, tableName string, ops []Operation) (Preview, 
 				}
 				sql = fmt.Sprintf("ALTER TABLE %s %s", table, strings.Join(actions, ", "))
 			} else {
-				def, e := columnDef(q, op.Column)
+				def, e := columnDef(dialect, q, op.Column)
 				if e != nil {
 					return Preview{}, e
 				}
 				sql = fmt.Sprintf("ALTER TABLE %s MODIFY COLUMN %s", table, def)
 			}
 			p.Risks = append(p.Risks, Risk{Level: "warning", Kind: "alter_column", Target: op.Column.Name, Message: "修改字段类型可能导致数据转换失败"})
+		case "set_column_comment":
+			col, e := q(op.Column.Name)
+			if e != nil {
+				return Preview{}, e
+			}
+			if dialect == "postgres" {
+				if strings.TrimSpace(op.Column.Comment) == "" {
+					sql = fmt.Sprintf("COMMENT ON COLUMN %s.%s IS NULL", table, col)
+				} else {
+					sql = fmt.Sprintf("COMMENT ON COLUMN %s.%s IS %s", table, col, sqlStringLiteral(op.Column.Comment))
+				}
+			} else {
+				def, e := columnDef(dialect, q, op.Column)
+				if e != nil {
+					return Preview{}, e
+				}
+				sql = fmt.Sprintf("ALTER TABLE %s MODIFY COLUMN %s", table, def)
+			}
+		case "set_primary":
+			col, e := q(op.Name)
+			if e != nil {
+				return Preview{}, e
+			}
+			if dialect == "mysql" {
+				sql = fmt.Sprintf("ALTER TABLE %s DROP PRIMARY KEY, ADD PRIMARY KEY (%s)", table, col)
+			} else {
+				constraint, e := q(tableName + "_pkey")
+				if e != nil {
+					return Preview{}, e
+				}
+				p.Statements = append(p.Statements, Statement{SQL: fmt.Sprintf("ALTER TABLE %s DROP CONSTRAINT IF EXISTS %s", table, constraint), Destructive: true})
+				sql = fmt.Sprintf("ALTER TABLE %s ADD PRIMARY KEY (%s)", table, col)
+			}
+			p.Risks = append(p.Risks, Risk{Level: "warning", Kind: "set_primary", Target: op.Name, Message: "修改主键可能影响关联表与查询性能"})
+		case "drop_primary":
+			if dialect == "mysql" {
+				sql = fmt.Sprintf("ALTER TABLE %s DROP PRIMARY KEY", table)
+			} else {
+				constraint, e := q(tableName + "_pkey")
+				if e != nil {
+					return Preview{}, e
+				}
+				sql = fmt.Sprintf("ALTER TABLE %s DROP CONSTRAINT IF EXISTS %s", table, constraint)
+			}
+			destructive = true
+			p.Risks = append(p.Risks, Risk{Level: "danger", Kind: "drop_primary", Target: tableName, Message: "删除主键后表数据编辑能力会受限"})
 		case "add_index":
 			sql, err = addIndexSQL(dialect, q, table, op.Index)
 			if err != nil {
@@ -154,7 +208,7 @@ func qualified(q func(string) (string, error), s, t string) (string, error) {
 	b, e := q(t)
 	return a + "." + b, e
 }
-func columnDef(q func(string) (string, error), c Column) (string, error) {
+func columnDef(dialect string, q func(string) (string, error), c Column) (string, error) {
 	n, e := q(c.Name)
 	if e != nil {
 		return "", e
@@ -172,7 +226,17 @@ func columnDef(q func(string) (string, error), c Column) (string, error) {
 		}
 		v += " DEFAULT " + *c.Default
 	}
+	if dialect == "mysql" {
+		if strings.ContainsAny(c.Comment, ";\x00") {
+			return "", fmt.Errorf("invalid comment")
+		}
+		v += " COMMENT " + sqlStringLiteral(c.Comment)
+	}
 	return v, nil
+}
+
+func sqlStringLiteral(value string) string {
+	return "'" + strings.ReplaceAll(value, "'", "''") + "'"
 }
 func addIndexSQL(d string, q func(string) (string, error), table string, i Index) (string, error) {
 	n, e := q(i.Name)

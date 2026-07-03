@@ -23,6 +23,21 @@ type TableDetail struct {
 }
 
 func DescribeTable(ctx context.Context, db *sql.DB, driver Driver, schemaName, tableName string) (TableDetail, error) {
+	columns, err := loadTableColumns(ctx, db, driver, schemaName, tableName)
+	if err != nil {
+		return TableDetail{}, err
+	}
+	detail := TableDetail{
+		Table:        schemaModel.Table{Schema: schemaName, Name: tableName, Columns: columns},
+		Capabilities: Capabilities{SchemaEdit: true, IndexEdit: true, ForeignKeyEdit: true, TransactionalDDL: driver == PostgreSQL},
+		Permissions:  []string{},
+	}
+	if driver == PostgreSQL {
+		if err := applyPostgresColumnComments(ctx, db, schemaName, tableName, &detail); err != nil {
+			return TableDetail{}, err
+		}
+	}
+	// Keys are available through information_schema in both supported engines.
 	marker := "?"
 	if driver == PostgreSQL {
 		marker = "$1"
@@ -31,32 +46,6 @@ func DescribeTable(ctx context.Context, db *sql.DB, driver Driver, schemaName, t
 	if driver == PostgreSQL {
 		marker2 = "$2"
 	}
-	rows, err := db.QueryContext(ctx, fmt.Sprintf(`SELECT column_name, data_type, is_nullable, column_default FROM information_schema.columns WHERE table_schema=%s AND table_name=%s ORDER BY ordinal_position`, marker, marker2), schemaName, tableName)
-	if err != nil {
-		return TableDetail{}, fmt.Errorf("load table columns: %w", err)
-	}
-	defer rows.Close()
-	detail := TableDetail{Table: schemaModel.Table{Schema: schemaName, Name: tableName}, Capabilities: Capabilities{SchemaEdit: true, IndexEdit: true, ForeignKeyEdit: true, TransactionalDDL: driver == PostgreSQL}, Permissions: []string{}}
-	for rows.Next() {
-		var name, typ, nullable string
-		var def sql.NullString
-		if err := rows.Scan(&name, &typ, &nullable, &def); err != nil {
-			return TableDetail{}, err
-		}
-		c := schemaModel.Column{Name: name, Type: typ, Nullable: nullable == "YES"}
-		if def.Valid {
-			v := def.String
-			c.Default = &v
-		}
-		detail.Table.Columns = append(detail.Table.Columns, c)
-	}
-	if err := rows.Err(); err != nil {
-		return TableDetail{}, err
-	}
-	if len(detail.Table.Columns) == 0 {
-		return TableDetail{}, fmt.Errorf("table not found")
-	}
-	// Keys are available through information_schema in both supported engines.
 	keyRows, keyErr := db.QueryContext(ctx, fmt.Sprintf(`SELECT kcu.column_name, tc.constraint_type FROM information_schema.table_constraints tc JOIN information_schema.key_column_usage kcu ON tc.constraint_name=kcu.constraint_name AND tc.table_schema=kcu.table_schema AND tc.table_name=kcu.table_name WHERE tc.table_schema=%s AND tc.table_name=%s AND tc.constraint_type IN ('PRIMARY KEY','UNIQUE') ORDER BY kcu.ordinal_position`, marker, marker2), schemaName, tableName)
 	if keyErr == nil {
 		for keyRows.Next() {
@@ -78,6 +67,126 @@ func DescribeTable(ctx context.Context, db *sql.DB, driver Driver, schemaName, t
 	}
 	detail.DDL = normalizedDDL(driver, detail.Table)
 	return detail, nil
+}
+
+func loadTableColumns(ctx context.Context, db *sql.DB, driver Driver, schemaName, tableName string) ([]schemaModel.Column, error) {
+	switch driver {
+	case MySQL:
+		return loadMySQLColumns(ctx, db, schemaName, tableName)
+	case PostgreSQL:
+		return loadPostgresColumns(ctx, db, schemaName, tableName)
+	default:
+		return nil, fmt.Errorf("unsupported database driver %q", driver)
+	}
+}
+
+func loadMySQLColumns(ctx context.Context, db *sql.DB, schemaName, tableName string) ([]schemaModel.Column, error) {
+	rows, err := db.QueryContext(ctx, `SELECT column_name, column_type, is_nullable, column_default, column_comment
+FROM information_schema.columns
+WHERE table_schema=? AND table_name=?
+ORDER BY ordinal_position`, schemaName, tableName)
+	if err != nil {
+		return nil, fmt.Errorf("load table columns: %w", err)
+	}
+	defer rows.Close()
+	columns := make([]schemaModel.Column, 0)
+	for rows.Next() {
+		var name, typ, nullable string
+		var def, comment sql.NullString
+		if err := rows.Scan(&name, &typ, &nullable, &def, &comment); err != nil {
+			return nil, err
+		}
+		c := schemaModel.Column{Name: name, Type: typ, Nullable: nullable == "YES"}
+		if def.Valid {
+			v := def.String
+			c.Default = &v
+		}
+		if comment.Valid {
+			c.Comment = comment.String
+		}
+		columns = append(columns, c)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	if len(columns) == 0 {
+		return nil, fmt.Errorf("table not found")
+	}
+	return columns, nil
+}
+
+func loadPostgresColumns(ctx context.Context, db *sql.DB, schemaName, tableName string) ([]schemaModel.Column, error) {
+	rows, err := db.QueryContext(ctx, `
+SELECT a.attname,
+       format_type(a.atttypid, a.atttypmod),
+       CASE WHEN a.attnotnull THEN 'NO' ELSE 'YES' END,
+       pg_get_expr(ad.adbin, ad.adrelid)
+FROM pg_catalog.pg_attribute a
+JOIN pg_catalog.pg_class c ON c.oid = a.attrelid
+JOIN pg_catalog.pg_namespace n ON n.oid = c.relnamespace
+LEFT JOIN pg_catalog.pg_attrdef ad ON ad.adrelid = a.attrelid AND ad.adnum = a.attnum
+WHERE n.nspname = $1 AND c.relname = $2
+  AND a.attnum > 0 AND NOT a.attisdropped
+ORDER BY a.attnum`, schemaName, tableName)
+	if err != nil {
+		return nil, fmt.Errorf("load table columns: %w", err)
+	}
+	defer rows.Close()
+	columns := make([]schemaModel.Column, 0)
+	for rows.Next() {
+		var name, typ, nullable string
+		var def sql.NullString
+		if err := rows.Scan(&name, &typ, &nullable, &def); err != nil {
+			return nil, err
+		}
+		c := schemaModel.Column{Name: name, Type: typ, Nullable: nullable == "YES"}
+		if def.Valid {
+			v := def.String
+			c.Default = &v
+		}
+		columns = append(columns, c)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	if len(columns) == 0 {
+		return nil, fmt.Errorf("table not found")
+	}
+	return columns, nil
+}
+
+func applyPostgresColumnComments(ctx context.Context, db *sql.DB, schemaName, tableName string, detail *TableDetail) error {
+	rows, err := db.QueryContext(ctx, `
+		SELECT a.attname, pg_catalog.col_description(c.oid, a.attnum)
+		FROM pg_catalog.pg_attribute a
+		JOIN pg_catalog.pg_class c ON c.oid = a.attrelid
+		JOIN pg_catalog.pg_namespace n ON n.oid = c.relnamespace
+		WHERE n.nspname = $1 AND c.relname = $2 AND a.attnum > 0 AND NOT a.attisdropped
+		ORDER BY a.attnum`, schemaName, tableName)
+	if err != nil {
+		return fmt.Errorf("load postgres column comments: %w", err)
+	}
+	defer rows.Close()
+	comments := map[string]string{}
+	for rows.Next() {
+		var name string
+		var comment sql.NullString
+		if err := rows.Scan(&name, &comment); err != nil {
+			return err
+		}
+		if comment.Valid {
+			comments[name] = comment.String
+		}
+	}
+	if err := rows.Err(); err != nil {
+		return err
+	}
+	for i := range detail.Table.Columns {
+		if text, ok := comments[detail.Table.Columns[i].Name]; ok {
+			detail.Table.Columns[i].Comment = text
+		}
+	}
+	return nil
 }
 
 func loadMySQLObjects(ctx context.Context, db *sql.DB, schemaName, tableName string, d *TableDetail) error {

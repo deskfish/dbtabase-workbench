@@ -4,6 +4,7 @@ import {
   deleteConnection as deleteLocalConnection,
   listConnections as listLocalConnections,
   saveConnection as saveLocalConnection,
+  sortConnectionsByName,
   type SavedConnection,
 } from './connections'
 import { toRegistryConnection, toSavedConnection } from './registryTypes'
@@ -15,7 +16,7 @@ export async function syncPersonalConnections(api: ConnectionRegistryAPI, nickna
 
   const remote = await api.listPersonalConnections(owner)
   if (remote.length > 0) {
-    return remote.map(toSavedConnection)
+    return sortConnectionsByName(remote.map(toSavedConnection))
   }
 
   const local = await listLocalConnections()
@@ -23,7 +24,7 @@ export async function syncPersonalConnections(api: ConnectionRegistryAPI, nickna
 
   const migrated = await api.migratePersonalConnections(owner, local.map(toRegistryConnection))
   await clearLocalConnections()
-  return migrated.map(toSavedConnection)
+  return sortConnectionsByName(migrated.map(toSavedConnection))
 }
 
 export async function persistConnection(api: ConnectionRegistryAPI, nickname: string, connection: SavedConnection): Promise<void> {

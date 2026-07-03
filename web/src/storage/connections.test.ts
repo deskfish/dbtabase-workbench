@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it } from 'vitest'
-import { clearConnections, deleteConnection, listConnections, saveConnection, touchConnection } from './connections'
+import { clearConnections, deleteConnection, listConnections, saveConnection, sortConnectionsByName, touchConnection, type SavedConnection } from './connections'
 
 describe('saved connections', () => {
   beforeEach(async () => clearConnections())
@@ -28,5 +28,15 @@ describe('saved connections', () => {
     await saveConnection({id:'one', name:'One', driver:'mysql', host:'db', port:3306, database:'x', user:'u', tlsMode:'disabled', password:'p'})
     await deleteConnection('one')
     expect(await listConnections()).toEqual([])
+  })
+
+  it('keeps stable order for same-name connections with different ports and drivers', () => {
+    const connections: SavedConnection[] = [
+      {id:'a', name:'192.168.6.100', driver:'postgres', host:'192.168.6.100', port:5432, database:'a', user:'u', tlsMode:'prefer', password:'p'},
+      {id:'b', name:'192.168.6.100', driver:'mysql', host:'192.168.6.100', port:3306, database:'b', user:'u', tlsMode:'disabled', password:'p'},
+      {id:'c', name:'192.168.6.100', driver:'redis', host:'192.168.6.100', port:6379, database:'0', user:'', tlsMode:'disabled', password:'p'},
+    ]
+    const sorted = sortConnectionsByName(connections)
+    expect(sorted.map((item) => `${item.driver}:${item.port}`)).toEqual(['mysql:3306', 'postgres:5432', 'redis:6379'])
   })
 })

@@ -4,12 +4,13 @@ import type { SavedConnection } from './connections'
 export type RegistryConnection = {
   id: string
   name: string
-  driver: 'mysql' | 'postgres'
+  driver: 'mysql' | 'postgres' | 'mongodb' | 'redis'
   host: string
   port: number
   database: string
   user: string
   password?: string
+  hasPassword?: boolean
   tlsMode: string
   lastConnectedAt?: number
   sourceTeamId?: string
@@ -28,6 +29,7 @@ export function toSavedConnection(record: RegistryConnection): SavedConnection {
     user: record.user,
     tlsMode: record.tlsMode,
     password: record.password,
+    hasPassword: record.hasPassword,
     lastConnectedAt: record.lastConnectedAt,
     sourceTeamId: record.sourceTeamId,
   }

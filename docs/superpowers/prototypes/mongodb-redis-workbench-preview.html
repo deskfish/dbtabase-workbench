@@ -1,0 +1,519 @@
+<!doctype html>
+<html lang="zh-CN" data-theme="dark">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="color-scheme" content="dark" />
+  <title>MongoDB & Redis 工作台 UI 预览</title>
+  <style>
+    :root {
+      --font-ui: "Avenir Next", "Noto Sans SC", "Microsoft YaHei", sans-serif;
+      --font-mono: "JetBrains Mono", "SFMono-Regular", Consolas, monospace;
+      --radius-sm: 5px;
+      --radius: 8px;
+      --bg: #0b0f13;
+      --surface: #11171d;
+      --surface-2: #172027;
+      --surface-3: #1d2831;
+      --ink: #e8eef2;
+      --muted: #8796a2;
+      --line: #26333d;
+      --line-strong: #344550;
+      --accent: #45d2c8;
+      --accent-ink: #061b1a;
+      --danger: #ff6b6b;
+      --warning: #e5ad56;
+      --success: #58c58b;
+      --info: #68a8e8;
+      --mongo: #47a248;
+      --redis: #dc382d;
+    }
+    * { box-sizing: border-box; }
+    html, body { height: 100%; margin: 0; }
+    body { background: var(--bg); color: var(--ink); font: 14px/1.45 var(--font-ui); }
+
+    .preview-banner {
+      position: sticky; top: 0; z-index: 100;
+      display: flex; align-items: center; justify-content: space-between; gap: 16px;
+      padding: 10px 18px; border-bottom: 1px solid var(--line);
+      background: color-mix(in srgb, var(--surface-2) 92%, var(--accent) 8%);
+      backdrop-filter: blur(8px);
+    }
+    .preview-banner h1 { margin: 0; font-size: 14px; font-weight: 650; }
+    .preview-banner p { margin: 2px 0 0; color: var(--muted); font-size: 11px; }
+    .screen-tabs { display: flex; gap: 6px; flex-wrap: wrap; }
+    .screen-tabs button {
+      min-height: 32px; padding: 0 12px; border: 1px solid var(--line-strong);
+      border-radius: var(--radius-sm); color: var(--muted); background: var(--surface);
+      font-size: 11px; cursor: pointer;
+    }
+    .screen-tabs button.active { color: var(--accent-ink); background: var(--accent); border-color: var(--accent); font-weight: 650; }
+    .screen-tabs button[data-driver="mongo"].active { background: var(--mongo); border-color: var(--mongo); color: #fff; }
+    .screen-tabs button[data-driver="redis"].active { background: var(--redis); border-color: var(--redis); color: #fff; }
+
+    .screen { display: none; height: calc(100vh - 56px); }
+    .screen.active { display: grid; grid-template: 52px minmax(0,1fr) / 280px 260px minmax(0,1fr); }
+
+    .topbar { grid-column: 1/-1; display: flex; align-items: center; justify-content: space-between; padding: 0 16px; background: var(--surface); border-bottom: 1px solid var(--line); }
+    .brand { display: flex; align-items: center; gap: 10px; }
+    .brand-mark { width: 32px; height: 32px; border-radius: 7px; display: grid; place-items: center; font-size: 14px; font-weight: 700; color: #fff; }
+    .brand-mark.mongo { background: linear-gradient(135deg, #47a248, #2d6b2f); }
+    .brand-mark.redis { background: linear-gradient(135deg, #dc382d, #a02820); }
+    .brand-mark.sql { background: linear-gradient(135deg, var(--info), #3d6fa8); }
+    .brand h2 { margin: 0; font-size: 14px; }
+    .brand small { color: var(--muted); font: 10px var(--font-mono); }
+    .topbar-meta { display: flex; align-items: center; gap: 8px; }
+    .badge { padding: 4px 10px; border-radius: 999px; font-size: 11px; border: 1px solid transparent; }
+    .badge.connected { color: var(--success); border-color: color-mix(in srgb, var(--success) 35%, transparent); background: color-mix(in srgb, var(--success) 10%, transparent); }
+    .badge.driver-mongo { color: var(--mongo); border-color: color-mix(in srgb, var(--mongo) 35%, transparent); background: color-mix(in srgb, var(--mongo) 10%, transparent); }
+    .badge.driver-redis { color: var(--redis); border-color: color-mix(in srgb, var(--redis) 35%, transparent); background: color-mix(in srgb, var(--redis) 10%, transparent); }
+
+    .sidebar, .catalog { background: var(--surface-2); border-right: 1px solid var(--line); overflow: hidden; display: flex; flex-direction: column; min-width: 0; }
+    .panel-heading { min-height: 48px; display: flex; align-items: center; justify-content: space-between; padding: 8px 12px; border-bottom: 1px solid var(--line); gap: 8px; }
+    .panel-heading span { font-size: 12px; font-weight: 650; }
+    .panel-heading small { display: block; color: var(--muted); font-size: 10px; }
+    .panel-count { padding: 1px 7px; border-radius: 999px; color: var(--muted); background: var(--surface-3); font: 10px var(--font-mono); }
+
+    .connection-list, .object-tree, .database-list, .key-list { flex: 1; overflow: auto; padding: 6px; }
+    .connection-item, .database-item, .tree-btn, .key-item {
+      width: 100%; display: flex; align-items: center; gap: 8px; min-height: 32px;
+      padding: 7px 8px; border: 1px solid transparent; border-radius: var(--radius-sm);
+      color: var(--ink); background: transparent; text-align: left; cursor: pointer; font-size: 12px;
+    }
+    .connection-item:hover, .database-item:hover, .tree-btn:hover, .key-item:hover { background: var(--surface-3); }
+    .connection-item.active, .database-item.active, .tree-btn.active, .key-item.active {
+      border-color: color-mix(in srgb, var(--accent) 40%, transparent);
+      background: color-mix(in srgb, var(--accent) 8%, transparent);
+    }
+    .dot { width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; }
+    .dot.mongo { background: var(--mongo); }
+    .dot.redis { background: var(--redis); }
+    .dot.postgres { background: var(--info); }
+    .tree-group { margin-bottom: 4px; }
+    .tree-group-head { display: flex; align-items: center; gap: 4px; padding: 2px 4px; color: var(--muted); font-size: 11px; }
+    .tree-children { padding-left: 18px; }
+    .tree-icon { width: 16px; text-align: center; color: var(--accent); font-size: 11px; }
+    .tree-icon.mongo { color: var(--mongo); }
+    .tree-icon.redis { color: var(--redis); }
+    .mono { font-family: var(--font-mono); font-size: 11px; }
+    .muted { color: var(--muted); }
+
+    .workspace { min-width: 0; display: grid; grid-template-rows: 36px auto minmax(0,1fr); background: var(--bg); }
+    .tabbar { display: flex; align-items: end; background: var(--surface); border-bottom: 1px solid var(--line); overflow: auto; }
+    .tab { height: 36px; min-width: 140px; display: flex; align-items: center; gap: 8px; padding: 0 12px; border: 0; border-right: 1px solid var(--line); color: var(--muted); background: transparent; font: 11px var(--font-mono); cursor: pointer; white-space: nowrap; }
+    .tab.active { color: var(--ink); background: var(--bg); box-shadow: inset 0 2px var(--accent); }
+    .tab.tab-doc.active { box-shadow: inset 0 2px var(--mongo); }
+    .tab.tab-key.active { box-shadow: inset 0 2px var(--redis); }
+
+    .toolbar { display: flex; align-items: center; gap: 8px; padding: 8px 12px; border-bottom: 1px solid var(--line); background: var(--bg); flex-wrap: wrap; }
+    .toolbar .spacer { flex: 1; }
+    .btn { min-height: 30px; padding: 0 10px; border: 1px solid var(--line-strong); border-radius: var(--radius-sm); color: var(--ink); background: var(--surface-2); font-size: 11px; cursor: pointer; }
+    .btn.primary { color: var(--accent-ink); background: var(--accent); border-color: var(--accent); font-weight: 650; }
+    .btn.mongo { color: #fff; background: var(--mongo); border-color: var(--mongo); }
+    .btn.redis { color: #fff; background: var(--redis); border-color: var(--redis); }
+    .chip { padding: 2px 8px; border-radius: 999px; font: 10px var(--font-mono); }
+    .chip.info { color: var(--info); background: color-mix(in srgb, var(--info) 12%, transparent); }
+    .chip.warn { color: var(--warning); background: color-mix(in srgb, var(--warning) 12%, transparent); }
+    .chip.mongo { color: var(--mongo); background: color-mix(in srgb, var(--mongo) 12%, transparent); }
+
+    .workspace-body { min-height: 0; display: grid; overflow: hidden; }
+    .workspace-body.split { grid-template-rows: minmax(160px, 42%) minmax(0, 1fr); }
+    .workspace-body.single { grid-template-rows: minmax(0, 1fr); }
+
+    .editor-pane { border-bottom: 1px solid var(--line); background: var(--bg); overflow: auto; }
+    .editor-pane pre { margin: 0; padding: 16px; font: 13px/1.7 var(--font-mono); white-space: pre-wrap; }
+    .json-key { color: #7ec8e3; }
+    .json-str { color: #a8d5a2; }
+    .json-num { color: #f0c674; }
+    .json-bool { color: #de935f; }
+    .json-null { color: var(--cell-null, #788791); font-style: italic; }
+
+    .result-pane { min-height: 0; display: grid; grid-template-rows: 34px minmax(0,1fr) 28px; background: var(--surface); }
+    .result-tabs { display: flex; border-bottom: 1px solid var(--line); }
+    .result-tabs button { height: 34px; padding: 0 14px; border: 0; color: var(--muted); background: transparent; font-size: 11px; cursor: pointer; }
+    .result-tabs button.active { color: var(--ink); box-shadow: inset 0 -2px var(--accent); }
+    .grid-scroll { overflow: auto; }
+    table.data-grid { width: 100%; border-collapse: separate; border-spacing: 0; font: 11px/1.35 var(--font-mono); }
+    .data-grid th, .data-grid td { padding: 7px 10px; border-right: 1px solid var(--line); border-bottom: 1px solid var(--line); text-align: left; white-space: nowrap; max-width: 280px; overflow: hidden; text-overflow: ellipsis; }
+    .data-grid thead th { position: sticky; top: 0; background: var(--surface-2); color: var(--grid-head, #bbc8d0); font-weight: 600; z-index: 1; }
+    .data-grid tbody tr:hover td { background: var(--grid-hover, #162127); }
+    .status-bar { display: flex; align-items: center; gap: 8px; padding: 0 10px; color: var(--muted); border-top: 1px solid var(--line); font: 10px var(--font-mono); }
+
+    .doc-layout { min-height: 0; display: grid; grid-template-columns: minmax(0, 1fr) 320px; }
+    .doc-list { border-right: 1px solid var(--line); overflow: auto; }
+    .doc-detail { overflow: auto; background: var(--surface); }
+    .section-tabs { display: flex; gap: 18px; padding: 0 16px; border-bottom: 1px solid var(--line); background: var(--surface); }
+    .section-tabs button { height: 40px; border: 0; color: var(--muted); background: transparent; cursor: pointer; font-size: 12px; }
+    .section-tabs button.active { color: var(--mongo); box-shadow: inset 0 -2px var(--mongo); font-weight: 650; }
+
+    .redis-value-panel { padding: 16px; display: grid; gap: 12px; }
+    .redis-meta { display: grid; grid-template-columns: repeat(4, minmax(0,1fr)); gap: 8px; }
+    .meta-card { padding: 10px 12px; border: 1px solid var(--line); border-radius: var(--radius-sm); background: var(--surface-2); }
+    .meta-card label { display: block; color: var(--muted); font-size: 10px; margin-bottom: 4px; }
+    .meta-card strong { font: 12px var(--font-mono); }
+    .type-badge { display: inline-block; padding: 2px 8px; border-radius: 4px; font: 10px var(--font-mono); font-weight: 650; }
+    .type-badge.string { color: #7ec8e3; background: color-mix(in srgb, #7ec8e3 15%, transparent); }
+    .type-badge.hash { color: #a8d5a2; background: color-mix(in srgb, #a8d5a2 15%, transparent); }
+    .type-badge.list { color: #f0c674; background: color-mix(in srgb, #f0c674 15%, transparent); }
+    .type-badge.zset { color: #de935f; background: color-mix(in srgb, #de935f 15%, transparent); }
+
+    .compare-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; padding: 16px; overflow: auto; height: 100%; }
+    .compare-card { border: 1px solid var(--line); border-radius: var(--radius); overflow: hidden; }
+    .compare-card h3 { margin: 0; padding: 10px 14px; font-size: 12px; background: var(--surface-2); border-bottom: 1px solid var(--line); }
+    .compare-card ul { margin: 0; padding: 12px 14px 12px 28px; font-size: 12px; color: var(--muted); line-height: 1.7; }
+    .compare-card li strong { color: var(--ink); }
+
+    .search-input { flex: 1; min-width: 120px; max-width: 220px; height: 30px; padding: 0 10px; border: 1px solid var(--line-strong); border-radius: var(--radius-sm); color: var(--ink); background: var(--surface-2); font: 11px var(--font-mono); }
+    .note { margin: 0; padding: 8px 12px; color: var(--warning); background: color-mix(in srgb, var(--warning) 8%, transparent); border-bottom: 1px solid var(--line); font-size: 11px; }
+
+    @media (max-width: 1100px) {
+      .screen.active { grid-template-columns: 0 220px minmax(0,1fr); }
+      .sidebar { display: none; }
+      .doc-layout { grid-template-columns: 1fr; }
+    }
+  </style>
+</head>
+<body>
+  <header class="preview-banner">
+    <div>
+      <h1>Database Workbench — MongoDB & Redis UI 预览</h1>
+      <p>基于现有 MySQL/PostgreSQL 壳层扩展 · 点击上方切换场景</p>
+    </div>
+    <nav class="screen-tabs" aria-label="预览场景">
+      <button type="button" class="active" data-screen="compare">架构对比</button>
+      <button type="button" data-screen="mongo-docs" data-driver="mongo">Mongo · 文档浏览</button>
+      <button type="button" data-screen="mongo-query" data-driver="mongo">Mongo · 查询</button>
+      <button type="button" data-screen="mongo-schema" data-driver="mongo">Mongo · 集合结构</button>
+      <button type="button" data-screen="redis-keys" data-driver="redis">Redis · 键浏览</button>
+      <button type="button" data-screen="redis-console" data-driver="redis">Redis · 命令台</button>
+    </nav>
+  </header>
+
+  <!-- 架构对比 -->
+  <section id="compare" class="screen active">
+    <div style="grid-column:1/-1; overflow:auto;">
+      <div class="compare-grid">
+        <article class="compare-card">
+          <h3>现有：MySQL / PostgreSQL（关系型）</h3>
+          <ul>
+            <li><strong>对象树</strong>：数据库 → Schema → 表 / 视图</li>
+            <li><strong>工作区标签</strong>：SQL 查询 · 表数据 · 表结构编辑</li>
+            <li><strong>数据模型</strong>：固定列 + 行，SQL 筛选排序</li>
+            <li><strong>结构编辑</strong>：字段/索引/外键 + DDL 三阶段</li>
+            <li><strong>查询语言</strong>：SQL（Monaco 编辑器）</li>
+          </ul>
+        </article>
+        <article class="compare-card">
+          <h3>扩展：MongoDB（文档型）</h3>
+          <ul>
+            <li><strong>对象树</strong>：数据库 → 集合（Collection）</li>
+            <li><strong>工作区标签</strong>：文档浏览 · 聚合查询 · 集合结构</li>
+            <li><strong>数据模型</strong>：BSON 文档，嵌套字段，动态 Schema</li>
+            <li><strong>结构编辑</strong>：索引管理 + Validator（只读/有限编辑）</li>
+            <li><strong>查询语言</strong>：Find Filter JSON + Aggregation Pipeline</li>
+          </ul>
+        </article>
+        <article class="compare-card">
+          <h3>扩展：Redis（键值型）</h3>
+          <ul>
+            <li><strong>对象树</strong>：DB 索引 (0–15) → 键列表（SCAN 分页）</li>
+            <li><strong>工作区标签</strong>：键详情 · 命令台</li>
+            <li><strong>数据模型</strong>：Key + Type + Value（string/hash/list/set/zset/stream）</li>
+            <li><strong>结构编辑</strong>：无 Schema；支持 TTL 设置、键 CRUD</li>
+            <li><strong>查询语言</strong>：Redis 命令（非 SQL）</li>
+          </ul>
+        </article>
+        <article class="compare-card">
+          <h3>统一壳层（不变的部分）</h3>
+          <ul>
+            <li><strong>连接侧栏</strong>：个人/团队连接、加密存储、分享复制</li>
+            <li><strong>顶部栏</strong>：标签页、连接状态、驱动类型徽章</li>
+            <li><strong>能力声明</strong>：<code>capabilities</code> 驱动 UI 显隐，前端不猜测</li>
+            <li><strong>安全链路</strong>：超时、行数/键数限制、危险操作确认</li>
+            <li><strong>结果组件</strong>：表格/JSON 视图复用 ResultGrid 变体</li>
+          </ul>
+        </article>
+      </div>
+    </div>
+  </section>
+
+  <!-- MongoDB 文档浏览 -->
+  <section id="mongo-docs" class="screen">
+    <header class="topbar">
+      <div class="brand">
+        <div class="brand-mark mongo">M</div>
+        <div><h2>数据库管理</h2><small>prod-mongo · ecommerce</small></div>
+      </div>
+      <div class="topbar-meta">
+        <span class="badge driver-mongo">MongoDB 7.0</span>
+        <span class="badge connected">● 已连接</span>
+      </div>
+    </header>
+    <aside class="sidebar">
+      <div class="panel-heading"><div><span>连接：个人连接</span><small>prod-mongo</small></div><span class="panel-count">4</span></div>
+      <div class="connection-list">
+        <button class="connection-item active"><span class="dot mongo"></span><span>prod-mongo</span></button>
+        <button class="connection-item"><span class="dot postgres"></span><span>analytics-pg</span></button>
+      </div>
+    </aside>
+    <aside class="catalog">
+      <div class="panel-heading"><div><span>数据库</span><small>ecommerce</small></div></div>
+      <div class="database-list">
+        <button class="database-item active"><span class="tree-icon mongo">◉</span><span class="mono">ecommerce</span></button>
+        <button class="database-item"><span class="tree-icon mongo">◉</span><span class="mono">logs</span></button>
+      </div>
+      <div class="panel-heading"><div><span>集合</span><small>12 个</small></div></div>
+      <div class="object-tree">
+        <div class="tree-group">
+          <button class="tree-btn active"><span class="tree-icon">▦</span><span class="mono">orders</span><span class="muted mono" style="margin-left:auto">842k</span></button>
+        </div>
+        <div class="tree-group">
+          <button class="tree-btn"><span class="tree-icon">▦</span><span class="mono">products</span><span class="muted mono" style="margin-left:auto">12k</span></button>
+        </div>
+        <div class="tree-group">
+          <button class="tree-btn"><span class="tree-icon">▦</span><span class="mono">users</span><span class="muted mono" style="margin-left:auto">56k</span></button>
+        </div>
+      </div>
+    </aside>
+    <main class="workspace">
+      <div class="tabbar">
+        <button class="tab tab-doc active">orders · 文档</button>
+        <button class="tab">聚合查询</button>
+        <button class="tab">集合结构</button>
+      </div>
+      <div class="toolbar">
+        <input class="search-input" placeholder="Filter JSON: { status: &quot;paid&quot; }" value='{ "status": "paid" }' />
+        <button class="btn">筛选</button>
+        <button class="btn">排序</button>
+        <button class="btn">刷新</button>
+        <span class="chip mongo">估算 842,103 文档</span>
+        <span class="chip info">_id 主键</span>
+        <div class="spacer"></div>
+        <button class="btn">导出 JSON</button>
+        <button class="btn mongo">+ 插入文档</button>
+      </div>
+      <div class="workspace-body doc-layout single">
+        <div class="doc-list">
+          <table class="data-grid">
+            <thead><tr><th>#</th><th>_id</th><th>status</th><th>total</th><th>customer.email</th><th>createdAt</th></tr></thead>
+            <tbody>
+              <tr><td>1</td><td>665a…f2c1</td><td>paid</td><td>128.50</td><td>alice@…</td><td>2026-07-01</td></tr>
+              <tr style="background:color-mix(in srgb,var(--mongo) 10%,transparent)"><td>2</td><td>665a…f2c2</td><td>paid</td><td>89.00</td><td>bob@…</td><td>2026-07-02</td></tr>
+              <tr><td>3</td><td>665a…f2c3</td><td>pending</td><td>45.00</td><td>carol@…</td><td>2026-07-03</td></tr>
+            </tbody>
+          </table>
+        </div>
+        <div class="doc-detail">
+          <p class="note">右侧文档详情：扁平化常用字段进表格，选中行展开完整 BSON JSON</p>
+          <pre>{
+  <span class="json-key">"_id"</span>: <span class="json-str">ObjectId("665af2c2…")</span>,
+  <span class="json-key">"status"</span>: <span class="json-str">"paid"</span>,
+  <span class="json-key">"total"</span>: <span class="json-num">89.00</span>,
+  <span class="json-key">"items"</span>: [
+    { <span class="json-key">"sku"</span>: <span class="json-str">"SKU-001"</span>, <span class="json-key">"qty"</span>: <span class="json-num">2</span> }
+  ],
+  <span class="json-key">"customer"</span>: {
+    <span class="json-key">"email"</span>: <span class="json-str">"bob@example.com"</span>,
+    <span class="json-key">"vip"</span>: <span class="json-bool">true</span>
+  },
+  <span class="json-key">"createdAt"</span>: <span class="json-str">ISODate("2026-07-02T08:30:00Z")</span>
+}</pre>
+        </div>
+      </div>
+      <div class="status-bar"><span>第 1–200 页 · 筛选后 12,408 条 · 耗时 86ms</span></div>
+    </main>
+  </section>
+
+  <!-- MongoDB 查询 -->
+  <section id="mongo-query" class="screen">
+    <header class="topbar">
+      <div class="brand"><div class="brand-mark mongo">M</div><div><h2>数据库管理</h2><small>prod-mongo</small></div></div>
+      <div class="topbar-meta"><span class="badge driver-mongo">MongoDB</span><span class="badge connected">● 已连接</span></div>
+    </header>
+    <aside class="sidebar"><div class="panel-heading"><span>连接</span></div><div class="connection-list"><button class="connection-item active"><span class="dot mongo"></span>prod-mongo</button></div></aside>
+    <aside class="catalog"><div class="panel-heading"><span>集合</span></div><div class="object-tree"><button class="tree-btn active"><span class="tree-icon">▦</span>orders</button></div></aside>
+    <main class="workspace">
+      <div class="tabbar"><button class="tab">orders · 文档</button><button class="tab tab-doc active">聚合查询 #2</button></div>
+      <div class="toolbar">
+        <button class="btn mongo primary">▶ 运行</button>
+        <button class="btn">停止</button>
+        <select class="btn" style="height:30px"><option>Find</option><option selected>Aggregate</option></select>
+        <span class="chip warn">只读 · 最大 10,000 文档</span>
+        <div class="spacer"></div>
+        <button class="btn">导出 JSON</button>
+      </div>
+      <div class="workspace-body split">
+        <div class="editor-pane"><pre>[
+  { <span class="json-key">"$match"</span>: { <span class="json-key">"status"</span>: <span class="json-str">"paid"</span>, <span class="json-key">"total"</span>: { <span class="json-key">"$gte"</span>: <span class="json-num">100</span> } } },
+  { <span class="json-key">"$group"</span>: {
+      <span class="json-key">"_id"</span>: <span class="json-str">"$customer.email"</span>,
+      <span class="json-key">"count"</span>: { <span class="json-key">"$sum"</span>: <span class="json-num">1</span> },
+      <span class="json-key">"revenue"</span>: { <span class="json-key">"$sum"</span>: <span class="json-key">"$total"</span> }
+  }},
+  { <span class="json-key">"$sort"</span>: { <span class="json-key">"revenue"</span>: <span class="json-num">-1</span> } },
+  { <span class="json-key">"$limit"</span>: <span class="json-num">50</span> }
+]</pre></div>
+        <div class="result-pane">
+          <div class="result-tabs"><button class="active">结果</button><button>Explain</button><span style="flex:1"></span></div>
+          <div class="grid-scroll">
+            <table class="data-grid">
+              <thead><tr><th>#</th><th>_id (email)</th><th>count</th><th>revenue</th></tr></thead>
+              <tbody>
+                <tr><td>1</td><td>alice@example.com</td><td>12</td><td>2,840.00</td></tr>
+                <tr><td>2</td><td>bob@example.com</td><td>8</td><td>1,120.00</td></tr>
+              </tbody>
+            </table>
+          </div>
+          <div class="status-bar">50 行 · 124ms · 已截断至 10,000</div>
+        </div>
+      </div>
+    </main>
+  </section>
+
+  <!-- MongoDB 集合结构 -->
+  <section id="mongo-schema" class="screen">
+    <header class="topbar">
+      <div class="brand"><div class="brand-mark mongo">M</div><div><h2>数据库管理</h2><small>orders 集合结构</small></div></div>
+      <div class="topbar-meta"><span class="badge driver-mongo">MongoDB</span></div>
+    </header>
+    <aside class="sidebar"><div class="panel-heading"><span>连接</span></div><div class="connection-list"><button class="connection-item active"><span class="dot mongo"></span>prod-mongo</button></div></aside>
+    <aside class="catalog"><div class="object-tree"><button class="tree-btn active"><span class="tree-icon">▦</span>orders</button></div></aside>
+    <main class="workspace">
+      <div class="tabbar"><button class="tab">orders · 文档</button><button class="tab tab-doc active">集合结构</button></div>
+      <div class="section-tabs">
+        <button class="active">推断字段</button>
+        <button>索引</button>
+        <button>Validator</button>
+        <button>统计</button>
+      </div>
+      <div class="toolbar">
+        <span class="chip info">采样 1,000 文档推断 · 非固定 Schema</span>
+        <div class="spacer"></div>
+        <button class="btn mongo">+ 新建索引</button>
+      </div>
+      <div class="workspace-body single">
+        <div class="grid-scroll" style="padding:12px">
+          <table class="data-grid">
+            <thead><tr><th>字段路径</th><th>类型（推断）</th><th>出现率</th><th>示例值</th></tr></thead>
+            <tbody>
+              <tr><td>_id</td><td>ObjectId</td><td>100%</td><td>665af2c1…</td></tr>
+              <tr><td>status</td><td>string</td><td>100%</td><td>"paid"</td></tr>
+              <tr><td>total</td><td>double</td><td>98%</td><td>128.50</td></tr>
+              <tr><td>customer.email</td><td>string</td><td>95%</td><td>"alice@…"</td></tr>
+              <tr><td>items[]</td><td>array&lt;object&gt;</td><td>92%</td><td>[{sku, qty}]</td></tr>
+              <tr><td>items[].sku</td><td>string</td><td>92%</td><td>"SKU-001"</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+      <p class="note">MongoDB 不做 SQL 式字段编辑；结构页聚焦索引 + Validator 只读/有限编辑</p>
+    </main>
+  </section>
+
+  <!-- Redis 键浏览 -->
+  <section id="redis-keys" class="screen">
+    <header class="topbar">
+      <div class="brand"><div class="brand-mark redis">R</div><div><h2>数据库管理</h2><small>cache-redis · DB 2</small></div></div>
+      <div class="topbar-meta"><span class="badge driver-redis">Redis 7.2</span><span class="badge connected">● 已连接</span></div>
+    </header>
+    <aside class="sidebar">
+      <div class="panel-heading"><div><span>连接</span></div></div>
+      <div class="connection-list"><button class="connection-item active"><span class="dot redis"></span>cache-redis</button></div>
+    </aside>
+    <aside class="catalog">
+      <div class="panel-heading"><div><span>DB 索引</span><small>0–15</small></div></div>
+      <div class="database-list">
+        <button class="database-item"><span class="mono">DB 0</span><span class="muted mono" style="margin-left:auto">1.2k</span></button>
+        <button class="database-item"><span class="mono">DB 1</span><span class="muted mono" style="margin-left:auto">340</span></button>
+        <button class="database-item active"><span class="mono">DB 2</span><span class="muted mono" style="margin-left:auto">89</span></button>
+      </div>
+      <div class="panel-heading"><div><span>键</span><small>SCAN 分页</small></div></div>
+      <div style="padding:6px 8px"><input class="search-input" style="max-width:100%" placeholder="MATCH session:*" value="session:*" /></div>
+      <div class="key-list">
+        <button class="key-item active"><span class="type-badge string">STR</span><span class="mono">session:abc123</span></button>
+        <button class="key-item"><span class="type-badge hash">HASH</span><span class="mono">user:42</span></button>
+        <button class="key-item"><span class="type-badge list">LIST</span><span class="mono">queue:jobs</span></button>
+        <button class="key-item"><span class="type-badge zset">ZSET</span><span class="mono">leaderboard</span></button>
+      </div>
+    </aside>
+    <main class="workspace">
+      <div class="tabbar"><button class="tab tab-key active">session:abc123</button><button class="tab">命令台</button></div>
+      <div class="toolbar">
+        <span class="type-badge string">STRING</span>
+        <span class="chip warn">TTL 3,412s</span>
+        <span class="chip info">内存 2.1 KB</span>
+        <div class="spacer"></div>
+        <button class="btn">重命名</button>
+        <button class="btn">设置 TTL</button>
+        <button class="btn">删除</button>
+        <button class="btn redis">保存</button>
+      </div>
+      <div class="workspace-body single">
+        <div class="redis-value-panel">
+          <div class="redis-meta">
+            <div class="meta-card"><label>键名</label><strong>session:abc123</strong></div>
+            <div class="meta-card"><label>类型</label><strong>String</strong></div>
+            <div class="meta-card"><label>TTL</label><strong>3,412 秒</strong></div>
+            <div class="meta-card"><label>编码</label><strong>embstr</strong></div>
+          </div>
+          <div class="editor-pane" style="border:1px solid var(--line); border-radius:var(--radius-sm)">
+            <pre><span class="json-str">{"userId":42,"role":"admin","issuedAt":"2026-07-03T01:00:00Z"}</span></pre>
+          </div>
+        </div>
+      </div>
+      <div class="status-bar">DB 2 · 键 89/89 已加载本页 · SCAN cursor=42</div>
+    </main>
+  </section>
+
+  <!-- Redis 命令台 -->
+  <section id="redis-console" class="screen">
+    <header class="topbar">
+      <div class="brand"><div class="brand-mark redis">R</div><div><h2>数据库管理</h2><small>cache-redis</small></div></div>
+      <div class="topbar-meta"><span class="badge driver-redis">Redis</span></div>
+    </header>
+    <aside class="sidebar"><div class="connection-list"><button class="connection-item active"><span class="dot redis"></span>cache-redis</button></div></aside>
+    <aside class="catalog"><div class="database-list"><button class="database-item active">DB 2</button></div></aside>
+    <main class="workspace">
+      <div class="tabbar"><button class="tab">session:abc123</button><button class="tab tab-key active">命令台 #1</button></div>
+      <div class="toolbar">
+        <button class="btn redis primary">▶ 执行</button>
+        <button class="btn">停止</button>
+        <span class="chip warn">禁止 FLUSHALL / CONFIG / DEBUG</span>
+        <div class="spacer"></div>
+        <button class="btn">历史</button>
+      </div>
+      <div class="workspace-body split">
+        <div class="editor-pane"><pre><span class="json-key">HGETALL</span> user:42
+<span class="json-key">TTL</span> session:abc123
+<span class="json-key">ZRANGE</span> leaderboard 0 9 WITHSCORES</pre></div>
+        <div class="result-pane">
+          <div class="result-tabs"><button class="active">结果</button></div>
+          <div class="grid-scroll" style="padding:12px;font:12px var(--font-mono);line-height:1.8">
+            <div><span class="muted">1)</span> HGETALL user:42</div>
+            <pre style="margin:4px 0 16px 20px;color:var(--ink)">1) "name"
+2) "Alice"
+3) "score"
+4) "980"</pre>
+            <div><span class="muted">2)</span> TTL session:abc123 → <span class="json-num">3412</span></div>
+            <div style="margin-top:12px"><span class="muted">3)</span> ZRANGE leaderboard 0 9 WITHSCORES</div>
+            <pre style="margin:4px 0 0 20px">1) "player_a"  2) "1200"
+3) "player_b"  4) "980"</pre>
+          </div>
+          <div class="status-bar">3 条命令 · 18ms · DB 2</div>
+        </div>
+      </div>
+    </main>
+  </section>
+
+  <script>
+    document.querySelectorAll('.screen-tabs button').forEach(btn => {
+      btn.addEventListener('click', () => {
+        document.querySelectorAll('.screen-tabs button').forEach(b => b.classList.remove('active'));
+        document.querySelectorAll('.screen').forEach(s => s.classList.remove('active'));
+        btn.classList.add('active');
+        document.getElementById(btn.dataset.screen).classList.add('active');
+      });
+    });
+  </script>
+</body>
+</html>

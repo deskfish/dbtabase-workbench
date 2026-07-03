@@ -55,17 +55,19 @@ export function buildTableSelectSQL(table: DatabaseObject, driver: 'mysql' | 'po
   const qualified = qualifiedTableName(table)
   const sort = options.sort ?? null
   const page = Math.max(1, options.page ?? 1)
-  const pageSize = Math.max(1, options.pageSize ?? 200)
-  const offset = (page - 1) * pageSize
+  const pageSize = options.pageSize ?? 200
+  const offset = (page - 1) * Math.max(1, pageSize)
   const where = buildWhereClause(driver, options.filterRules ?? [])
 
   let sql = `SELECT *\nFROM ${qualified}`
   if (where) sql += `\nWHERE ${where}`
   if (sort) sql += `\nORDER BY ${quoteIdent(driver, sort.column)} ${sort.direction.toUpperCase()}`
-  if (driver === 'mysql') {
-    sql += `\nLIMIT ${offset}, ${pageSize}`
-  } else {
-    sql += `\nLIMIT ${pageSize} OFFSET ${offset}`
+  if (pageSize > 0) {
+    if (driver === 'mysql') {
+      sql += `\nLIMIT ${offset}, ${pageSize}`
+    } else {
+      sql += `\nLIMIT ${pageSize} OFFSET ${offset}`
+    }
   }
   return `${sql};`
 }

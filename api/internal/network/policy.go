@@ -19,8 +19,13 @@ type Policy struct {
 }
 
 func (p Policy) Validate(ctx context.Context, host string, port uint16) ([]netip.Addr, error) {
-	if _, ok := p.AllowedPorts[port]; !ok {
+	if port == 0 {
 		return nil, fmt.Errorf("%w: port %d", ErrDestinationDenied, port)
+	}
+	if len(p.AllowedPorts) > 0 {
+		if _, ok := p.AllowedPorts[port]; !ok {
+			return nil, fmt.Errorf("%w: port %d", ErrDestinationDenied, port)
+		}
 	}
 	host = strings.TrimSpace(strings.TrimSuffix(host, "."))
 	if host == "" {
@@ -34,14 +39,14 @@ func (p Policy) Validate(ctx context.Context, host string, port uint16) ([]netip
 	if len(addresses) == 0 {
 		return nil, fmt.Errorf("%w: host resolved to no addresses", ErrDestinationDenied)
 	}
-	if !p.suffixAllowed(host) && net.ParseIP(host) == nil {
+	if len(p.AllowedSuffixes) > 0 && !p.suffixAllowed(host) && net.ParseIP(host) == nil {
 		return nil, fmt.Errorf("%w: domain suffix", ErrDestinationDenied)
 	}
 	for _, address := range addresses {
 		if address.IsUnspecified() || address.IsLoopback() || address.IsMulticast() || address.IsLinkLocalUnicast() || address.IsLinkLocalMulticast() {
 			return nil, fmt.Errorf("%w: special address", ErrDestinationDenied)
 		}
-		if !containedByAny(address, p.AllowedCIDRs) {
+		if len(p.AllowedCIDRs) > 0 && !containedByAny(address, p.AllowedCIDRs) {
 			return nil, fmt.Errorf("%w: address outside allowlist", ErrDestinationDenied)
 		}
 	}

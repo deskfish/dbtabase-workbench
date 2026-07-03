@@ -1,5 +1,5 @@
 export type ConnectionInput = {
-  driver: 'mysql' | 'postgres'
+  driver: 'mysql' | 'postgres' | 'mongodb' | 'redis'
   host: string
   port: number
   database: string
@@ -45,3 +45,25 @@ export type SchemaForeignKey = {name:string; columns:string[]; refSchema:string;
 export type TableDetail = {table:{schema:string; name:string; columns:SchemaColumn[]; indexes:SchemaIndex[]; foreignKeys:SchemaForeignKey[]}; capabilities:{schemaEdit:boolean;indexEdit:boolean;foreignKeyEdit:boolean;transactionalDDL:boolean}; ddl?:string;estimatedRows?:number;permissions:string[]}
 export type SchemaOperation = {kind:string;name?:string;newName?:string;column?:SchemaColumn;index?:SchemaIndex;foreignKey?:SchemaForeignKey}
 export type SchemaPreview = {statements:{sql:string;destructive?:boolean}[];risks:{level:string;kind:string;target:string;message:string}[];warnings?:string[];fingerprint:string;token:string;expiresAt:number}
+
+export type MongoFindResult = {
+  columns: QueryColumn[]
+  rows: unknown[][]
+  total?: number
+  truncated?: boolean
+  durationMs: number
+}
+
+export type MongoCollectionDetail = {
+  collection: string
+  database: string
+  estimatedDocs?: number
+  fields: {path: string; type: string; occurrence: number; example?: string}[]
+  indexes: {name: string; keys: string[]; unique: boolean}[]
+  validator?: string
+}
+
+export type RedisKeySummary = {key: string; type: string; ttl: number}
+export type RedisKeysResult = {keys: RedisKeySummary[]; cursor: number; durationMs: number}
+export type RedisKeyDetail = {key: string; type: string; ttl: number; value: unknown; durationMs: number}
+export type RedisCommandResult = {results: {command: string; output?: unknown; error?: string}[]; durationMs: number}

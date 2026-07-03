@@ -23,6 +23,7 @@ type ConnectionRecord struct {
 	Database        string `json:"database"`
 	User            string `json:"user"`
 	Password        string `json:"password,omitempty"`
+	HasPassword     bool   `json:"hasPassword,omitempty"`
 	TLSMode         string `json:"tlsMode"`
 	LastConnectedAt *int64 `json:"lastConnectedAt,omitempty"`
 	SourceTeamID    string `json:"sourceTeamId,omitempty"`
@@ -126,7 +127,7 @@ func (s *Store) ListPersonal(ctx context.Context, nickname string) ([]Connection
 SELECT id, name, driver, host, port, database_name, user_name, password_enc, tls_mode, source_team_id, last_connected_at
 FROM personal_connections
 WHERE owner_nickname = ?
-ORDER BY COALESCE(last_connected_at, 0) DESC, name ASC
+ORDER BY name ASC, host ASC, port ASC, driver ASC
 `, owner)
 	if err != nil {
 		return nil, err
@@ -149,6 +150,21 @@ func (s *Store) UpsertPersonal(ctx context.Context, nickname string, record Conn
 	enc, err := encryptSecret(s.secret, record.Password)
 	if err != nil {
 		return ConnectionRecord{}, err
+	}
+	if record.Password == "" {
+		existing, existingErr := s.GetPersonal(ctx, owner, record.ID)
+		if existingErr == nil && existing.Password != "" {
+			record.Password = existing.Password
+			enc, err = encryptSecret(s.secret, record.Password)
+			if err != nil {
+				return ConnectionRecord{}, err
+			}
+		} else if existingErr == nil {
+			existingEnc, encErr := s.personalPasswordEnc(ctx, owner, record.ID)
+			if encErr == nil && existingEnc != "" {
+				enc = existingEnc
+			}
+		}
 	}
 	now := time.Now().UnixMilli()
 	_, err = s.db.ExecContext(ctx, `
@@ -187,6 +203,14 @@ FROM personal_connections
 WHERE owner_nickname = ? AND id = ?
 `, owner, id)
 	return scanPersonalRow(row, s.secret)
+}
+
+func (s *Store) personalPasswordEnc(ctx context.Context, owner, id string) (string, error) {
+	var enc string
+	err := s.db.QueryRowContext(ctx, `
+SELECT password_enc FROM personal_connections WHERE owner_nickname = ? AND id = ?
+`, owner, id).Scan(&enc)
+	return enc, err
 }
 
 func (s *Store) DeletePersonal(ctx context.Context, nickname, id string) error {
@@ -308,6 +332,14 @@ func nullIfEmpty(value string) any {
 	return value
 }
 
+func decryptSecretOrEmpty(secret, encoded string) string {
+	password, err := decryptSecret(secret, encoded)
+	if err != nil {
+		return ""
+	}
+	return password
+}
+
 func scanPersonalRow(row *sql.Row, secret string) (ConnectionRecord, error) {
 	var record ConnectionRecord
 	var enc string
@@ -319,11 +351,8 @@ func scanPersonalRow(row *sql.Row, secret string) (ConnectionRecord, error) {
 		}
 		return ConnectionRecord{}, err
 	}
-	password, err := decryptSecret(secret, enc)
-	if err != nil {
-		return ConnectionRecord{}, err
-	}
-	record.Password = password
+	record.Password = decryptSecretOrEmpty(secret, enc)
+	record.HasPassword = strings.TrimSpace(enc) != ""
 	if sourceTeam.Valid {
 		record.SourceTeamID = sourceTeam.String
 	}
@@ -344,11 +373,8 @@ func scanPersonalRows(rows *sql.Rows, secret string) ([]ConnectionRecord, error)
 		if err := rows.Scan(&record.ID, &record.Name, &record.Driver, &record.Host, &record.Port, &record.Database, &record.User, &enc, &record.TLSMode, &sourceTeam, &lastConnected); err != nil {
 			return nil, err
 		}
-		password, err := decryptSecret(secret, enc)
-		if err != nil {
-			return nil, err
-		}
-		record.Password = password
+		record.Password = decryptSecretOrEmpty(secret, enc)
+		record.HasPassword = strings.TrimSpace(enc) != ""
 		if sourceTeam.Valid {
 			record.SourceTeamID = sourceTeam.String
 		}
@@ -371,11 +397,8 @@ func scanTeamRow(row *sql.Row, secret string) (ConnectionRecord, error) {
 		}
 		return ConnectionRecord{}, err
 	}
-	password, err := decryptSecret(secret, enc)
-	if err != nil {
-		return ConnectionRecord{}, err
-	}
-	record.Password = password
+	record.Password = decryptSecretOrEmpty(secret, enc)
+	record.HasPassword = strings.TrimSpace(enc) != ""
 	record.SharedAt = &sharedAt
 	return record, nil
 }
@@ -389,11 +412,8 @@ func scanTeamRows(rows *sql.Rows, secret string) ([]ConnectionRecord, error) {
 		if err := rows.Scan(&record.ID, &record.SharedBy, &record.Name, &record.Driver, &record.Host, &record.Port, &record.Database, &record.User, &enc, &record.TLSMode, &sharedAt); err != nil {
 			return nil, err
 		}
-		password, err := decryptSecret(secret, enc)
-		if err != nil {
-			return nil, err
-		}
-		record.Password = password
+		record.Password = decryptSecretOrEmpty(secret, enc)
+		record.HasPassword = strings.TrimSpace(enc) != ""
 		record.SharedAt = &sharedAt
 		result = append(result, record)
 	}

@@ -36,7 +36,35 @@ export type QueryTab = {
   resultTab: 'result' | 'history'
 }
 
-export type WorkspaceTab = TableTab | QueryTab
+export type MongoDocumentTab = {
+  id: string
+  kind: 'mongo-document'
+  title: string
+  collection: DatabaseObject
+  section: 'documents' | 'query' | 'schema'
+}
+
+export type RedisKeyTab = {
+  id: string
+  kind: 'redis-key'
+  title: string
+  key: string
+}
+
+export type RedisConsoleTab = {
+  id: string
+  kind: 'redis-console'
+  title: string
+}
+
+export type DriverHomeTab = {
+  id: string
+  kind: 'driver-home'
+  title: string
+  driver: 'mongodb' | 'redis'
+}
+
+export type WorkspaceTab = TableTab | QueryTab | MongoDocumentTab | RedisKeyTab | RedisConsoleTab | DriverHomeTab
 
 export function tableTabId(table: DatabaseObject): string {
   return `table:${table.catalog ?? ''}/${table.schema ?? ''}/${table.name}`
@@ -54,6 +82,32 @@ export function defaultSelectSQL(table: DatabaseObject, driver: 'mysql' | 'postg
   return buildTableSelectSQL(table, driver, {page: 1, pageSize: 200})
 }
 
+export function createDriverHomeTab(driver: 'mongodb' | 'redis'): DriverHomeTab {
+  return {
+    id: `home:${driver}`,
+    kind: 'driver-home',
+    title: driver === 'redis' ? 'Redis 工作区' : 'MongoDB 工作区',
+    driver,
+  }
+}
+
+export function createDefaultWorkspaceTab(
+  driver: 'mysql' | 'postgres' | 'mongodb' | 'redis' | '',
+  initialSQL: string,
+  redisConsoleCounter: number,
+): {tab: WorkspaceTab; nextRedisConsoleCounter: number} {
+  if (driver === 'redis') {
+    return {
+      tab: createRedisConsoleTab(redisConsoleCounter),
+      nextRedisConsoleCounter: redisConsoleCounter + 1,
+    }
+  }
+  if (driver === 'mongodb') {
+    return {tab: createDriverHomeTab('mongodb'), nextRedisConsoleCounter: redisConsoleCounter}
+  }
+  return {tab: createQueryTab(initialSQL), nextRedisConsoleCounter: redisConsoleCounter}
+}
+
 export function createQueryTab(sql = 'SELECT *\nFROM your_table\nLIMIT 200;', title?: string): QueryTab {
   return {
     id: `query:${createId()}`,
@@ -66,6 +120,24 @@ export function createQueryTab(sql = 'SELECT *\nFROM your_table\nLIMIT 200;', ti
     message: '尚未执行查询',
     resultTab: 'result',
   }
+}
+
+export function createMongoDocumentTab(collection: DatabaseObject): MongoDocumentTab {
+  return {
+    id: `mongo:${collection.schema ?? ''}/${collection.name}`,
+    kind: 'mongo-document',
+    title: `${collection.name} · 文档`,
+    collection,
+    section: 'documents',
+  }
+}
+
+export function createRedisKeyTab(key: string): RedisKeyTab {
+  return {id: `redis-key:${key}`, kind: 'redis-key', title: key, key}
+}
+
+export function createRedisConsoleTab(counter: number): RedisConsoleTab {
+  return {id: `redis-console:${counter}`, kind: 'redis-console', title: `命令台 #${counter}`}
 }
 
 export function createTableTab(table: DatabaseObject, driver: 'mysql' | 'postgres' = 'postgres'): TableTab {

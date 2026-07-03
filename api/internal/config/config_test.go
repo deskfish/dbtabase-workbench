@@ -17,6 +17,9 @@ func TestLoadDefaults(t *testing.T) {
 	if cfg.QueryTimeout != 30*time.Second || cfg.PageSize != 200 || cfg.MaxRows != 10_000 {
 		t.Fatalf("unexpected defaults: %+v", cfg)
 	}
+	if len(cfg.AllowedCIDRs) != 0 || len(cfg.AllowedPorts) != 0 {
+		t.Fatalf("expected unrestricted defaults, got CIDRs=%v ports=%v", cfg.AllowedCIDRs, cfg.AllowedPorts)
+	}
 }
 
 func TestLoadRejectsInvalidInteger(t *testing.T) {

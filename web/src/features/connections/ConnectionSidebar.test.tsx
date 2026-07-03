@@ -38,16 +38,17 @@ it('renders saved connections and triggers selection', async () => {
     onShareConnectionToTeam={() => {}}
     onCopyTeamConnection={() => {}}
     onSwitchDatabase={() => {}}
+    onCreateDatabase={() => {}}
+    onCreateTable={() => {}}
+    onDeleteDatabase={() => {}}
     onOpenTable={() => {}}
-    onNewQueryFromTable={() => {}}
-    onCopyTableName={() => {}}
-    onRefreshTable={() => {}}
-    onCopyColumnName={() => {}}
-    onNewQueryFromColumn={() => {}}
+    onOpenTableStructure={() => {}}
+    onNewQuery={() => {}}
+    onDeleteTable={() => {}}
   />)
-  expect(screen.getByText('小明')).toBeVisible()
   expect(screen.getByText('Reporting')).toBeVisible()
-  expect(screen.getByRole('complementary', {name: '数据库目录'})).toBeVisible()
+  expect(screen.getByText('PostgreSQL')).toBeVisible()
+  expect(screen.queryByRole('complementary', {name: '数据库目录'})).not.toBeInTheDocument()
   await userEvent.click(screen.getByRole('button', {name: '连接 Reporting'}))
   expect(onSelect).toHaveBeenCalledWith(saved[0])
 })
@@ -77,12 +78,13 @@ it('filters personal connections and exposes selected connection actions in the 
     onShareConnectionToTeam={onShare}
     onCopyTeamConnection={() => {}}
     onSwitchDatabase={() => {}}
+    onCreateDatabase={() => {}}
+    onCreateTable={() => {}}
+    onDeleteDatabase={() => {}}
     onOpenTable={() => {}}
-    onNewQueryFromTable={() => {}}
-    onCopyTableName={() => {}}
-    onRefreshTable={() => {}}
-    onCopyColumnName={() => {}}
-    onNewQueryFromColumn={() => {}}
+    onOpenTableStructure={() => {}}
+    onNewQuery={() => {}}
+    onDeleteTable={() => {}}
   />)
 
   await user.type(screen.getByRole('searchbox', {name: '搜索个人连接'}), '10.10')
@@ -90,6 +92,7 @@ it('filters personal connections and exposes selected connection actions in the 
   expect(screen.queryByText('Reporting')).not.toBeInTheDocument()
 
   await user.clear(screen.getByRole('searchbox', {name: '搜索个人连接'}))
+  expect(screen.getByRole('complementary', {name: '数据库目录'})).toBeVisible()
   await user.click(screen.getByRole('button', {name: '编辑当前连接'}))
   await user.click(screen.getByRole('button', {name: '分享当前连接'}))
   await user.click(screen.getByRole('button', {name: '删除当前连接'}))

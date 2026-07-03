@@ -25,14 +25,28 @@ type Dependencies struct {
 	Registry            *registry.Store
 	ValidateDestination func(context.Context, string, uint16) error
 	OpenConnection      func(context.Context, database.ConnectionInput) (*sql.DB, error)
+	OpenHandle          func(context.Context, database.ConnectionInput) (*database.Handle, error)
 	Queries             *query.Service
 	Transactions        *query.TransactionService
 	Schema              *schema.Service
+	QueryTimeout        time.Duration
+	PageSize            int
 }
 
 func NewRouter(deps Dependencies) http.Handler {
 	if deps.Ready == nil {
 		deps.Ready = func() bool { return true }
+	}
+	if deps.QueryTimeout <= 0 {
+		deps.QueryTimeout = 30 * time.Second
+	}
+	if deps.PageSize <= 0 {
+		deps.PageSize = 200
+	}
+	if deps.OpenHandle == nil && deps.OpenConnection != nil {
+		deps.OpenHandle = func(ctx context.Context, input database.ConnectionInput) (*database.Handle, error) {
+			return database.OpenHandle(ctx, input)
+		}
 	}
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /health/live", func(w http.ResponseWriter, _ *http.Request) {
@@ -60,25 +74,33 @@ func NewRouter(deps Dependencies) http.Handler {
 			}
 			if deps.ValidateDestination != nil {
 				if err := deps.ValidateDestination(r.Context(), input.Host, input.Port); err != nil {
-					writeError(w, http.StatusForbidden, "destination_denied", "数据库地址不在允许范围内")
+					writeError(w, http.StatusBadRequest, "destination_invalid", "数据库地址无效或无法解析")
 					return
 				}
 			}
-			if deps.OpenConnection == nil {
+			if deps.OpenHandle == nil {
 				writeError(w, http.StatusServiceUnavailable, "connections_unavailable", "数据库连接服务不可用")
 				return
 			}
 			if input.Driver == database.PostgreSQL && input.Database == "" {
 				input.Database = "postgres"
 			}
+			if input.Driver == database.MongoDB && input.Database == "" {
+				input.Database = "admin"
+			}
 			ctx, cancel := context.WithTimeout(r.Context(), 10*time.Second)
 			defer cancel()
-			dbHandle, err := deps.OpenConnection(ctx, input)
+			openHandle := deps.OpenHandle
+			if openHandle == nil {
+				writeError(w, http.StatusServiceUnavailable, "connections_unavailable", "数据库连接服务不可用")
+				return
+			}
+			handle, err := openHandle(ctx, input)
 			if err != nil {
 				writeError(w, http.StatusBadGateway, "connection_failed", "无法连接数据库")
 				return
 			}
-			connectionID := deps.Sessions.PutConnection(sessionID, dbHandle, string(input.Driver), input)
+			connectionID := deps.Sessions.PutHandle(sessionID, handle)
 			writeJSON(w, http.StatusCreated, map[string]string{"connectionId": connectionID, "database": input.Database})
 		})
 		mux.HandleFunc("GET /api/connections/{id}/databases", func(w http.ResponseWriter, r *http.Request) {
@@ -86,13 +108,13 @@ func NewRouter(deps Dependencies) http.Handler {
 			if !ok {
 				return
 			}
-			dbHandle, driver, found := deps.Sessions.GetConnection(sessionID, r.PathValue("id"))
+			handle, found := deps.Sessions.GetHandle(sessionID, r.PathValue("id"))
 			if !found {
 				writeError(w, http.StatusNotFound, "connection_not_found", "连接不存在或已过期")
 				return
 			}
 			_, currentDatabase, _ := deps.Sessions.GetConnectionConfig(sessionID, r.PathValue("id"))
-			names, err := database.ListDatabases(r.Context(), dbHandle, database.Driver(driver))
+			names, err := database.ListDatabases(r.Context(), handle)
 			if err != nil {
 				writeError(w, http.StatusBadGateway, "databases_failed", "无法读取数据库列表")
 				return
@@ -124,20 +146,36 @@ func NewRouter(deps Dependencies) http.Handler {
 				writeJSON(w, http.StatusOK, map[string]string{"database": currentDatabase})
 				return
 			}
-			if deps.OpenConnection == nil {
+			openHandle := deps.OpenHandle
+			if openHandle == nil {
 				writeError(w, http.StatusServiceUnavailable, "connections_unavailable", "数据库连接服务不可用")
 				return
 			}
 			config.Database = input.Database
 			ctx, cancel := context.WithTimeout(r.Context(), 10*time.Second)
 			defer cancel()
-			dbHandle, err := deps.OpenConnection(ctx, config)
+			var handle *database.Handle
+			var err error
+			switch config.Driver {
+			case database.Redis:
+				handle, err = database.SwitchRedisDatabase(ctx, config, input.Database)
+			case database.MongoDB:
+				config = database.SwitchMongoDatabase(config, input.Database)
+				handle, err = openHandle(ctx, config)
+			default:
+				dbHandle, openErr := deps.OpenConnection(ctx, config)
+				if openErr != nil {
+					err = openErr
+				} else {
+					handle = &database.Handle{Driver: config.Driver, Config: config, SQL: dbHandle}
+				}
+			}
 			if err != nil {
 				writeError(w, http.StatusBadGateway, "connection_failed", "无法切换到目标数据库")
 				return
 			}
-			if !deps.Sessions.ReplaceDatabase(sessionID, connectionID, dbHandle, input.Database) {
-				_ = dbHandle.Close()
+			if !deps.Sessions.ReplaceHandle(sessionID, connectionID, handle) {
+				_ = handle.Close()
 				writeError(w, http.StatusNotFound, "connection_not_found", "连接不存在或已过期")
 				return
 			}
@@ -156,12 +194,13 @@ func NewRouter(deps Dependencies) http.Handler {
 			if !ok {
 				return
 			}
-			dbHandle, driver, found := deps.Sessions.GetConnection(sessionID, r.PathValue("id"))
+			connectionID := r.PathValue("id")
+			handle, found := deps.Sessions.GetHandle(sessionID, connectionID)
 			if !found {
 				writeError(w, http.StatusNotFound, "connection_not_found", "连接不存在或已过期")
 				return
 			}
-			objects, err := database.Metadata(r.Context(), dbHandle, database.Driver(driver))
+			objects, err := database.Metadata(r.Context(), handle)
 			if err != nil {
 				writeError(w, http.StatusBadGateway, "metadata_failed", "无法读取数据库结构")
 				return
@@ -177,6 +216,7 @@ func NewRouter(deps Dependencies) http.Handler {
 		if deps.Schema != nil {
 			registerSchemaRoutes(mux, deps)
 		}
+		registerMongoRedisRoutes(mux, deps)
 	}
 	if deps.Registry != nil {
 		registerRegistryRoutes(mux, deps.Registry)

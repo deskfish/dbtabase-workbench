@@ -29,3 +29,36 @@ it('filters by database type and copies multiple selected connections', async ()
   expect(onCopy).toHaveBeenNthCalledWith(1, 'p1')
   expect(onCopy).toHaveBeenNthCalledWith(2, 'p2')
 })
+
+it('deduplicates the same server connection regardless of default database', async () => {
+  render(<TeamConnectionsDialog connections={[
+    {id:'t1',name:'10.10.80.122_pg',driver:'postgres',host:'10.10.80.122',port:5432,database:'channelHub',user:'db',tlsMode:'prefer',sharedBy:'孙振东',sharedAt:1},
+    {id:'t2',name:'10.10.80.122_pg',driver:'postgres',host:'10.10.80.122',port:5432,database:'flybase',user:'db',tlsMode:'prefer',sharedBy:'小明星',sharedAt:2},
+  ]} personalConnections={[]} onCopy={()=>{}} onClose={()=>{}} />)
+
+  expect(screen.getAllByText('10.10.80.122_pg')).toHaveLength(1)
+  expect(screen.queryByText('channelHub')).not.toBeInTheDocument()
+  expect(screen.queryByText('flybase')).not.toBeInTheDocument()
+  expect(screen.getByText('小明星、孙振东')).toBeVisible()
+})
+
+it('shows MongoDB and Redis in type filter and table rows', async () => {
+  const user = userEvent.setup()
+  render(<TeamConnectionsDialog connections={[
+    {id:'m1',name:'Mongo Hub',driver:'mongodb',host:'192.168.6.100',port:27017,database:'channel-hub',user:'',tlsMode:'prefer',sharedBy:'alice'},
+    {id:'r1',name:'Cache Redis',driver:'redis',host:'192.168.6.100',port:6379,database:'0',user:'',tlsMode:'disabled',sharedBy:'bob'},
+    {id:'p1',name:'PG One',driver:'postgres',host:'10.0.0.1',port:5432,database:'app',user:'db',tlsMode:'prefer'},
+  ]} personalConnections={[]} onCopy={()=>{}} onClose={()=>{}} />)
+
+  expect(screen.getByText('MongoDB')).toBeVisible()
+  expect(screen.getByText('Redis')).toBeVisible()
+
+  await user.click(screen.getByRole('combobox', {name: '连接类型'}))
+  expect(screen.getByRole('option', {name: 'MongoDB'})).toBeInTheDocument()
+  expect(screen.getByRole('option', {name: 'Redis'})).toBeInTheDocument()
+
+  await user.click(screen.getByRole('option', {name: 'MongoDB'}))
+  expect(screen.getByText('Mongo Hub')).toBeVisible()
+  expect(screen.queryByText('Cache Redis')).not.toBeInTheDocument()
+  expect(screen.queryByText('PG One')).not.toBeInTheDocument()
+})

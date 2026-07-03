@@ -26,7 +26,6 @@ func Load(getenv func(string) string) (Config, error) {
 		QueryTimeout: 30 * time.Second,
 		PageSize:     200,
 		MaxRows:      10_000,
-		AllowedPorts: map[uint16]struct{}{3306: {}, 5432: {}},
 	}
 
 	var err error

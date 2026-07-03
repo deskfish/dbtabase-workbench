@@ -1,4 +1,5 @@
-import type { ConnectionInput, DatabaseObject, MutationInput, QueryResult, SchemaOperation, SchemaPreview, TableDetail } from './types'
+import type { ConnectionInput, DatabaseObject, MongoCollectionDetail, MongoFindResult, MutationInput, QueryResult, RedisCommandResult, RedisKeyDetail, RedisKeysResult, SchemaOperation, SchemaPreview, TableDetail } from './types'
+import type { ConnectionCapabilities } from './driver'
 import type { RegistryConnection } from '../storage/registryTypes'
 
 type Fetcher = (input: RequestInfo | URL, init?: RequestInit) => Promise<Response>
@@ -76,7 +77,7 @@ export class APIClient {
 
   async metadata(connectionId: string): Promise<DatabaseObject[]> {
     const result = await this.request<{objects:DatabaseObject[]}>(`/api/connections/${encodeURIComponent(connectionId)}/metadata`)
-    return result.objects
+    return result.objects ?? []
   }
 
   tableDetail(connectionId:string,schema:string,table:string):Promise<TableDetail>{return this.request(`/api/connections/${encodeURIComponent(connectionId)}/tables/${encodeURIComponent(schema)}/${encodeURIComponent(table)}`)}
@@ -101,11 +102,22 @@ export class APIClient {
   }
 
   async exportCSV(connectionId: string, queryId: string): Promise<Blob> {
+    return this.exportCSVWithRetry(connectionId, queryId, false)
+  }
+
+  private async exportCSVWithRetry(connectionId: string, queryId: string, sessionRetried: boolean): Promise<Blob> {
     await this.createSession()
     const response = await this.fetcher(`${this.baseURL}/api/connections/${encodeURIComponent(connectionId)}/queries/${encodeURIComponent(queryId)}/export.csv`, {
       headers: {'X-Session-ID': this.sessionId, 'Accept':'text/csv'},
     })
-    if (!response.ok) throw new APIError(response.status, 'export_failed', '导出失败')
+    if (!response.ok) {
+      const payload = await response.json().catch(() => ({})) as {error?:{code?:string}}
+      if (!sessionRetried && response.status === 401 && payload.error?.code === 'invalid_session') {
+        this.invalidateSession()
+        return this.exportCSVWithRetry(connectionId, queryId, true)
+      }
+      throw new APIError(response.status, 'export_failed', '导出失败')
+    }
     return response.blob()
   }
 
@@ -120,6 +132,91 @@ export class APIClient {
 
   async mutate(connectionId: string, operation: 'insert'|'update'|'delete', input: MutationInput): Promise<void> {
     await this.request(`/api/connections/${encodeURIComponent(connectionId)}/rows/${operation}`, {method:'POST', body:JSON.stringify(input)})
+  }
+
+  capabilities(connectionId: string): Promise<ConnectionCapabilities> {
+    return this.request(`/api/connections/${encodeURIComponent(connectionId)}/capabilities`)
+  }
+
+  mongoFind(connectionId: string, input: {database?: string; collection: string; filter?: string; sort?: string; limit?: number; skip?: number}): Promise<MongoFindResult> {
+    return this.request(`/api/connections/${encodeURIComponent(connectionId)}/mongo/find`, {
+      method: 'POST',
+      body: JSON.stringify({
+        ...input,
+        filter: input.filter ? JSON.parse(input.filter) : {},
+        sort: input.sort ? JSON.parse(input.sort) : undefined,
+      }),
+    })
+  }
+
+  mongoAggregate(connectionId: string, input: {database?: string; collection: string; pipeline: string}): Promise<MongoFindResult> {
+    const pipeline = JSON.parse(input.pipeline) as unknown[]
+    return this.request(`/api/connections/${encodeURIComponent(connectionId)}/mongo/aggregate`, {
+      method: 'POST',
+      body: JSON.stringify({database: input.database, collection: input.collection, pipeline}),
+    })
+  }
+
+  mongoMutate(connectionId: string, input: {database?: string; collection: string; operation: string; filter?: string; document?: string}): Promise<{affected: number}> {
+    return this.request(`/api/connections/${encodeURIComponent(connectionId)}/mongo/documents`, {
+      method: 'POST',
+      body: JSON.stringify({
+        database: input.database,
+        collection: input.collection,
+        operation: input.operation,
+        filter: input.filter ? JSON.parse(input.filter) : undefined,
+        document: input.document ? JSON.parse(input.document) : undefined,
+      }),
+    })
+  }
+
+  mongoCollectionDetail(connectionId: string, collection: string): Promise<MongoCollectionDetail> {
+    return this.request(`/api/connections/${encodeURIComponent(connectionId)}/mongo/collections/${encodeURIComponent(collection)}`)
+  }
+
+  mongoCreateIndex(connectionId: string, collection: string, keys: Record<string, number>, unique: boolean, name?: string): Promise<{name: string}> {
+    return this.request(`/api/connections/${encodeURIComponent(connectionId)}/mongo/collections/${encodeURIComponent(collection)}/indexes`, {
+      method: 'POST',
+      body: JSON.stringify({keys, unique, name}),
+    })
+  }
+
+  mongoDropIndex(connectionId: string, collection: string, name: string): Promise<void> {
+    return this.request(`/api/connections/${encodeURIComponent(connectionId)}/mongo/collections/${encodeURIComponent(collection)}/indexes/${encodeURIComponent(name)}`, {method: 'DELETE'})
+  }
+
+  redisScanKeys(connectionId: string, match = '*', cursor = 0, count = 200): Promise<RedisKeysResult> {
+    const params = new URLSearchParams({match, cursor: String(cursor), count: String(count)})
+    return this.request(`/api/connections/${encodeURIComponent(connectionId)}/redis/keys?${params}`)
+  }
+
+  redisGetKey(connectionId: string, key: string): Promise<RedisKeyDetail> {
+    return this.request(`/api/connections/${encodeURIComponent(connectionId)}/redis/key?key=${encodeURIComponent(key)}`)
+  }
+
+  redisSaveKey(connectionId: string, key: string, value: {type: string; value: unknown; ttl?: number}): Promise<void> {
+    return this.request(`/api/connections/${encodeURIComponent(connectionId)}/redis/key`, {
+      method: 'PUT',
+      body: JSON.stringify({key, value}),
+    })
+  }
+
+  redisDeleteKey(connectionId: string, key: string): Promise<void> {
+    return this.request(`/api/connections/${encodeURIComponent(connectionId)}/redis/key?key=${encodeURIComponent(key)}`, {method: 'DELETE'})
+  }
+
+  redisSetTTL(connectionId: string, key: string, ttl: number): Promise<void> {
+    return this.request(`/api/connections/${encodeURIComponent(connectionId)}/redis/key/ttl`, {
+      method: 'POST',
+      body: JSON.stringify({key, ttl}),
+    })
+  }
+
+  redisCommands(connectionId: string, commands: string[]): Promise<RedisCommandResult> {
+    return this.request(`/api/connections/${encodeURIComponent(connectionId)}/redis/commands`, {
+      method: 'POST',
+      body: JSON.stringify({commands}),
+    })
   }
 
   async listPersonalConnections(nickname: string): Promise<RegistryConnection[]> {
@@ -194,7 +291,13 @@ export class APIClient {
     }
   }
 
-  private async request<T>(path: string, init: RequestInit = {}, authenticated = true): Promise<T> {
+  /** 服务端重启后会话失效时，丢弃本地缓存并重新创建 */
+  private invalidateSession(): void {
+    this.sessionId = ''
+    this.sessionReady = null
+  }
+
+  private async request<T>(path: string, init: RequestInit = {}, authenticated = true, sessionRetried = false): Promise<T> {
     if (authenticated) await this.createSession()
     const headers = new Headers(init.headers)
     headers.set('Accept', 'application/json')
@@ -203,7 +306,12 @@ export class APIClient {
     const response = await this.fetchWithTimeout(this.baseURL + path, {...init, headers})
     if (!response.ok) {
       const payload = await response.json().catch(() => ({})) as {error?:{code?:string; message?:string}}
-      throw new APIError(response.status, payload.error?.code ?? 'request_failed', payload.error?.message ?? `请求失败 (${response.status})`, payload.error)
+      const code = payload.error?.code ?? 'request_failed'
+      if (authenticated && !sessionRetried && response.status === 401 && code === 'invalid_session') {
+        this.invalidateSession()
+        return this.request<T>(path, init, authenticated, true)
+      }
+      throw new APIError(response.status, code, payload.error?.message ?? `请求失败 (${response.status})`, payload.error)
     }
     if (response.status === 204) return undefined as T
     return response.json() as Promise<T>

@@ -26,6 +26,42 @@ func TestGenerateDialectDDLAndRisks(t *testing.T) {
 	}
 }
 
+func TestGenerateColumnCommentDDL(t *testing.T) {
+	pg, err := Generate("postgres", "public", "articles", []Operation{{Kind: "set_column_comment", Column: Column{Name: "title", Type: "text", Nullable: true, Comment: "标题"}}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if pg.Statements[0].SQL != `COMMENT ON COLUMN "public"."articles"."title" IS '标题'` {
+		t.Fatalf("unexpected postgres comment ddl: %s", pg.Statements[0].SQL)
+	}
+
+	my, err := Generate("mysql", "app", "articles", []Operation{{Kind: "add_column", Column: Column{Name: "note", Type: "varchar(50)", Nullable: true, Comment: "备注"}}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(my.Statements[0].SQL, "COMMENT '备注'") {
+		t.Fatalf("unexpected mysql comment ddl: %s", my.Statements[0].SQL)
+	}
+}
+
+func TestGeneratePrimaryKeyDDL(t *testing.T) {
+	my, err := Generate("mysql", "app", "users", []Operation{{Kind: "set_primary", Name: "id"}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(my.Statements[0].SQL, "DROP PRIMARY KEY, ADD PRIMARY KEY (`id`)") {
+		t.Fatalf("unexpected mysql primary ddl: %s", my.Statements[0].SQL)
+	}
+
+	pg, err := Generate("postgres", "public", "users", []Operation{{Kind: "set_primary", Name: "id"}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(pg.Statements) != 2 {
+		t.Fatalf("expected drop+add primary key statements, got %#v", pg.Statements)
+	}
+}
+
 func TestFingerprintStable(t *testing.T) {
 	a := Fingerprint(Table{Name: "t", Schema: "public", Columns: []Column{{Name: "id", Type: "INT"}}})
 	b := Fingerprint(Table{Name: "t", Schema: "public", Columns: []Column{{Name: "id", Type: "INT"}}})

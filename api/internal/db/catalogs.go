@@ -6,16 +6,40 @@ import (
 	"fmt"
 )
 
-// ListDatabases 列出当前实例上可连接的数据库。
-func ListDatabases(ctx context.Context, database *sql.DB, driver Driver) ([]string, error) {
-	switch driver {
+func ListDatabases(ctx context.Context, handle *Handle) ([]string, error) {
+	switch handle.Driver {
 	case PostgreSQL:
-		return listPostgresDatabases(ctx, database)
+		db, err := handle.SQLDB()
+		if err != nil {
+			return nil, err
+		}
+		return listPostgresDatabases(ctx, db)
 	case MySQL:
-		return listMySQLDatabases(ctx, database)
+		db, err := handle.SQLDB()
+		if err != nil {
+			return nil, err
+		}
+		return listMySQLDatabases(ctx, db)
+	case MongoDB:
+		client, err := handle.MongoDB()
+		if err != nil {
+			return nil, err
+		}
+		return ListMongoDatabases(ctx, client)
+	case Redis:
+		client, err := handle.RedisClient()
+		if err != nil {
+			return nil, err
+		}
+		return ListRedisDatabases(ctx, client)
 	default:
-		return nil, fmt.Errorf("unsupported database driver %q", driver)
+		return nil, fmt.Errorf("unsupported database driver %q", handle.Driver)
 	}
+}
+
+// ListDatabasesSQL keeps the SQL-only signature for existing callers.
+func ListDatabasesSQL(ctx context.Context, database *sql.DB, driver Driver) ([]string, error) {
+	return ListDatabases(ctx, &Handle{Driver: driver, SQL: database})
 }
 
 func listPostgresDatabases(ctx context.Context, database *sql.DB) ([]string, error) {

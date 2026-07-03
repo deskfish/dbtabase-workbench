@@ -69,25 +69,25 @@ export function TableFilterBuilder({
       <div className="table-filter-rows">
         {draft.map((rule, index) => {
           const needsValue = rule.operator !== 'is_null' && rule.operator !== 'is_not_null'
-          const joinLabel = rule.join === 'and' ? '并且' : '或者'
+          const joinLabel = rule.join
           return <div key={rule.id} className={`table-filter-row ${rule.enabled ? '' : 'disabled'}`}>
             <label className="col-check filter-check" title="启用此条件">
               <input type="checkbox" checked={rule.enabled} onChange={(event) => patchRule(rule.id, {enabled: event.target.checked})} />
             </label>
-            <div className="col-field"><SelectControl ariaLabel={`字段 ${index + 1}`} value={rule.column} options={columns.map((column) => ({value: column.name, label: column.name}))} onChange={(value) => patchRule(rule.id, {column: value})} /></div>
-            <div className="col-op"><SelectControl ariaLabel={`运算符 ${index + 1}`} value={rule.operator} options={FILTER_OPERATORS} onChange={(value) => patchRule(rule.id, {operator: value as FilterOperator})} /></div>
+            <div className="col-field"><SelectControl className="compact" ariaLabel={`字段 ${index + 1}`} value={rule.column} options={columns.map((column) => ({value: column.name, label: column.name}))} onChange={(value) => patchRule(rule.id, {column: value})} /></div>
+            <div className="col-op"><SelectControl className="compact" ariaLabel={`运算符 ${index + 1}`} value={rule.operator} options={FILTER_OPERATORS} onChange={(value) => patchRule(rule.id, {operator: value as FilterOperator})} /></div>
             <div className="col-value">
               {needsValue
                 ? <input value={rule.value} placeholder="输入筛选值" onChange={(event) => patchRule(rule.id, {value: event.target.value})} />
-                : <span className="filter-value-hint">无需填写</span>}
+                : <span className="filter-value-hint">—</span>}
             </div>
             <div className="col-join">
               {index < draft.length - 1
                 ? <button
                   type="button"
                   className="filter-join-btn"
-                  aria-label={`与下一条件：${joinLabel}`}
-                  title="点击切换 并且 / 或者"
+                  aria-label={`Join with next: ${joinLabel}`}
+                  title="Click to toggle and / or"
                   onClick={() => toggleJoin(rule.id)}
                 >{joinLabel}</button>
                 : <span className="filter-join-empty">—</span>}
@@ -95,12 +95,12 @@ export function TableFilterBuilder({
             <div className="col-action">
               <button
                 type="button"
-                className="icon-tool tiny filter-remove"
+                className="icon-button tiny danger filter-remove"
                 aria-label="删除条件"
                 title="删除条件"
                 disabled={draft.length <= 1}
                 onClick={() => removeRule(rule.id)}
-              ><Icon name="minus" /></button>
+              ><Icon name="trash" /></button>
             </div>
           </div>
         })}

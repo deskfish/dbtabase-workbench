@@ -16,9 +16,7 @@ cp deploy/.env.example deploy/.env
 编辑 `deploy/.env`：
 
 - `SITE_ADDRESS`：同事访问的 IP 或域名。
-- `DBW_ALLOWED_CIDRS`：API 可以连接的数据库网段。不要使用 `0.0.0.0/0`。
-- `DBW_ALLOWED_PORTS`：通常只保留 `3306,5432`。
-- `DBW_ALLOWED_SUFFIXES`：可选的数据库域名后缀，例如 `.corp.example`。
+- `DBW_ALLOWED_CIDRS`、`DBW_ALLOWED_PORTS`、`DBW_ALLOWED_SUFFIXES`：可选。留空表示不限制目标 IP/端口/域名；仅在需要收紧安全策略时再配置。
 
 启动：
 
@@ -42,7 +40,7 @@ docker compose --env-file deploy/.env -f deploy/compose.yml up -d
 
 ## 公网数据库
 
-公网目标默认会被 CIDR 规则拒绝。只将明确的数据库公网 IP 以 `/32` 或 `/128` 加入允许列表，并在数据库防火墙中只允许本服务器出口 IP。不要加入整个公网网段。
+默认不限制目标 IP 与端口，可直接连接任意可达的数据库地址。若部署环境需要收紧策略，可通过 `DBW_ALLOWED_CIDRS`、`DBW_ALLOWED_PORTS` 配置允许列表，并在数据库防火墙中只允许本服务器出口 IP。
 
 ## 健康检查
 

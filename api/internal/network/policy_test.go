@@ -49,6 +49,16 @@ func TestPolicyRejectsAnyResolvedAddressOutsideAllowlist(t *testing.T) {
 	}
 }
 
+func TestPolicyAllowsAnyPortWhenUnrestricted(t *testing.T) {
+	p := Policy{}
+	if _, err := p.Validate(context.Background(), "192.168.6.100", 6379); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := p.Validate(context.Background(), "10.10.80.71", 27017); err != nil {
+		t.Fatal(err)
+	}
+}
+
 func TestPolicyRejectsDisallowedPort(t *testing.T) {
 	p := Policy{AllowedPorts: map[uint16]struct{}{3306: {}}}
 	if _, err := p.Validate(context.Background(), "10.20.1.2", 22); err == nil {

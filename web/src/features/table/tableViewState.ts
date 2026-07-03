@@ -24,15 +24,15 @@ export type TableDraft = {
 }
 
 export const FILTER_OPERATORS: Array<{value: FilterOperator; label: string}> = [
-  {value: '=', label: '等于'},
-  {value: '!=', label: '不等于'},
-  {value: '>', label: '大于'},
-  {value: '<', label: '小于'},
-  {value: '>=', label: '大于等于'},
-  {value: '<=', label: '小于等于'},
-  {value: 'like', label: '包含'},
-  {value: 'is_null', label: '为空'},
-  {value: 'is_not_null', label: '不为空'},
+  {value: '=', label: '='},
+  {value: '!=', label: '!='},
+  {value: '>', label: '>'},
+  {value: '<', label: '<'},
+  {value: '>=', label: '>='},
+  {value: '<=', label: '<='},
+  {value: 'like', label: 'LIKE'},
+  {value: 'is_null', label: 'IS NULL'},
+  {value: 'is_not_null', label: 'IS NOT NULL'},
 ]
 
 export function createEmptyFilterRule(column = '', join: FilterJoin = 'and'): TableFilterRule {

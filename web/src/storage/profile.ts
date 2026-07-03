@@ -21,3 +21,7 @@ export function getProfile(): Profile | null {
 export function saveProfile(profile: Profile): void {
   localStorage.setItem(PROFILE_KEY, JSON.stringify({nickname: profile.nickname.trim()}))
 }
+
+export function clearProfile(): void {
+  localStorage.removeItem(PROFILE_KEY)
+}
