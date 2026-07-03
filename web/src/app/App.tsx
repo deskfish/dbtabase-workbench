@@ -922,7 +922,7 @@ export function App({api, sessionBootstrap, initialConnectionId = '', initialSQL
 
       {!connected && <section className="table-pane workspace-home disconnected-home" aria-label="工作区">
         <div className="empty-state workspace-onboarding">
-          <span className="onboarding-icon"><Icon name="database" /></span>
+          <span className="onboarding-icon"><BrandMark size={48} /></span>
           <h3>先连接数据库，再开始工作</h3>
           <p>选择已有连接，或者创建一个新的个人连接；团队共享连接也可以直接复制使用。</p>
           <div className="workspace-onboarding-actions">
