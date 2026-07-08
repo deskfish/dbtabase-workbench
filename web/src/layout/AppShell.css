@@ -33,4 +33,19 @@
 .login-card label { display: grid; gap: 7px; color: var(--muted); font-size: 12px; font-weight: 650; }
 .login-card input { height: 42px; padding: 0 12px; border: 1px solid var(--line); border-radius: 12px; color: var(--ink); background: var(--surface-2); }
 .form-error { margin: 0; color: var(--danger); }
+.form-success { margin: 16px 0 0; color: var(--success); font-weight: 750; }
+.settings-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 18px; }
+.settings-grid + .settings-grid, .settings-grid + .ops-panel, .ops-panel + .ops-panel { margin-top: 18px; }
+.ops-panel h2 { margin: 0 0 14px; font-size: 18px; letter-spacing: -.02em; }
+.settings-profile { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; }
+.settings-profile > span:not(.badge), .settings-row span { color: var(--muted); }
+.badge { display: inline-flex; align-items: center; min-height: 24px; padding: 0 9px; border: 1px solid color-mix(in srgb, var(--accent) 35%, var(--line)); border-radius: 999px; color: var(--accent); background: color-mix(in srgb, var(--accent) 10%, transparent); font-size: 12px; font-weight: 800; }
+.settings-list { display: grid; gap: 10px; margin-top: 14px; }
+.settings-row { display: flex; align-items: center; justify-content: space-between; gap: 14px; padding: 12px; border: 1px solid var(--line); border-radius: 14px; background: var(--surface-2); }
+.settings-row div:first-child { display: grid; gap: 4px; min-width: 0; }
+.settings-form { display: grid; gap: 12px; margin-bottom: 16px; }
+.settings-form label, .settings-member-form label, .field-block { display: grid; gap: 7px; color: var(--muted); font-size: 12px; font-weight: 650; }
+.settings-form input, .settings-member-form input { min-height: 40px; padding: 0 11px; border: 1px solid var(--line); border-radius: 11px; color: var(--ink); background: var(--surface); }
+.settings-member-form { align-items: end; }
+.settings-member-actions { display: flex; align-items: center; gap: 10px; }
 @media (max-width: 760px) { .ops-shell { grid-template-columns: 1fr; grid-template-rows: auto auto minmax(0,1fr); } .ops-rail { grid-row: 1; flex-direction: row; overflow-x: auto; } .ops-rail nav { grid-auto-flow: column; grid-auto-columns: max-content; } .ops-topbar { grid-row: 2; min-height: 54px; } }
