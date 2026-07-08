@@ -11,3 +11,4 @@ test-results/
 /api/server
 /work/
 .DS_Store
+.migration-snapshots/
