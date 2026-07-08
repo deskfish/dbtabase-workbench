@@ -9,15 +9,23 @@ import (
 )
 
 type Config struct {
-	Address         string
-	QueryTimeout    time.Duration
-	PageSize        int
-	MaxRows         int
-	AllowedCIDRs    []netip.Prefix
-	AllowedPorts    map[uint16]struct{}
-	AllowedSuffixes []string
-	RegistryPath    string
-	RegistrySecret  string
+	Address                string
+	QueryTimeout           time.Duration
+	PageSize               int
+	MaxRows                int
+	AllowedCIDRs           []netip.Prefix
+	AllowedPorts           map[uint16]struct{}
+	AllowedSuffixes        []string
+	RegistryPath           string
+	RegistrySecret         string
+	PostgresURL            string
+	RedisURL               string
+	CredentialKeys         string
+	ActiveCredentialKey    string
+	CookieSecure           bool
+	SessionTTL             time.Duration
+	BootstrapAdminUser     string
+	BootstrapAdminPassword string
 }
 
 func Load(getenv func(string) string) (Config, error) {
@@ -26,6 +34,8 @@ func Load(getenv func(string) string) (Config, error) {
 		QueryTimeout: 30 * time.Second,
 		PageSize:     200,
 		MaxRows:      10_000,
+		CookieSecure: true,
+		SessionTTL:   12 * time.Hour,
 	}
 
 	var err error
@@ -58,7 +68,43 @@ func Load(getenv func(string) string) (Config, error) {
 	}
 	cfg.RegistryPath = stringValue(getenv("DBW_REGISTRY_PATH"), "/data/registry.db")
 	cfg.RegistrySecret = getenv("DBW_REGISTRY_SECRET")
+	if cfg.PostgresURL, err = requiredValue(getenv("OC_DATABASE_URL")); err != nil {
+		return Config{}, fmt.Errorf("OC_DATABASE_URL: %w", err)
+	}
+	if cfg.RedisURL, err = requiredValue(getenv("OC_REDIS_URL")); err != nil {
+		return Config{}, fmt.Errorf("OC_REDIS_URL: %w", err)
+	}
+	if cfg.CredentialKeys, err = requiredValue(getenv("OC_CREDENTIAL_KEYS")); err != nil {
+		return Config{}, fmt.Errorf("OC_CREDENTIAL_KEYS: %w", err)
+	}
+	if cfg.ActiveCredentialKey, err = requiredValue(getenv("OC_ACTIVE_CREDENTIAL_KEY")); err != nil {
+		return Config{}, fmt.Errorf("OC_ACTIVE_CREDENTIAL_KEY: %w", err)
+	}
+	if value := getenv("OC_COOKIE_SECURE"); value != "" {
+		cfg.CookieSecure, err = strconv.ParseBool(value)
+		if err != nil {
+			return Config{}, fmt.Errorf("OC_COOKIE_SECURE: %w", err)
+		}
+	}
+	if value := getenv("OC_SESSION_TTL"); value != "" {
+		cfg.SessionTTL, err = time.ParseDuration(value)
+		if err != nil || cfg.SessionTTL <= 0 {
+			return Config{}, fmt.Errorf("OC_SESSION_TTL must be a positive duration")
+		}
+	}
+	cfg.BootstrapAdminUser = getenv("OC_BOOTSTRAP_ADMIN_USER")
+	cfg.BootstrapAdminPassword = getenv("OC_BOOTSTRAP_ADMIN_PASSWORD")
+	if (cfg.BootstrapAdminUser == "") != (cfg.BootstrapAdminPassword == "") {
+		return Config{}, fmt.Errorf("OC_BOOTSTRAP_ADMIN_USER and OC_BOOTSTRAP_ADMIN_PASSWORD must be set together")
+	}
 	return cfg, nil
+}
+
+func requiredValue(value string) (string, error) {
+	if value == "" {
+		return "", fmt.Errorf("must not be empty")
+	}
+	return value, nil
 }
 
 func stringValue(value, fallback string) string {
