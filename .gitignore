@@ -2,6 +2,9 @@
 .superpowers/
 node_modules/
 dist/
+!/api/internal/webui/dist/
+/api/internal/webui/dist/*
+!/api/internal/webui/dist/.gitkeep
 .env
 coverage/
 playwright-report/

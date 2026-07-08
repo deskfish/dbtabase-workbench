@@ -3,6 +3,7 @@ package httpapi
 import (
 	"errors"
 	"net/http"
+	"strings"
 
 	"dbworkbench/api/internal/identity"
 )
@@ -54,6 +55,8 @@ func isPublicAuthPath(r *http.Request) bool {
 	case r.Method == http.MethodGet && (r.URL.Path == "/health/live" || r.URL.Path == "/health/ready"):
 		return true
 	case r.Method == http.MethodPost && r.URL.Path == "/api/auth/login":
+		return true
+	case (r.Method == http.MethodGet || r.Method == http.MethodHead) && r.URL.Path != "/api" && !strings.HasPrefix(r.URL.Path, "/api/"):
 		return true
 	default:
 		return false

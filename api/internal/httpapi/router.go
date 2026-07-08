@@ -18,6 +18,7 @@ import (
 	"dbworkbench/api/internal/schema"
 	"dbworkbench/api/internal/session"
 	"dbworkbench/api/internal/table"
+	"dbworkbench/api/internal/webui"
 )
 
 type Dependencies struct {
@@ -236,6 +237,7 @@ func NewRouter(deps Dependencies) http.Handler {
 	if deps.Registry != nil {
 		registerRegistryRoutes(mux, deps.Registry)
 	}
+	mux.Handle("/", webui.Embedded())
 	var handler http.Handler = mux
 	if deps.Identity != nil && deps.AuthSessions != nil {
 		handler = authMiddleware(handler, deps)
