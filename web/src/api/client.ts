@@ -1,8 +1,15 @@
 import type { ConnectionInput, DatabaseObject, MongoCollectionDetail, MongoFindResult, MutationInput, QueryResult, RedisCommandResult, RedisKeyDetail, RedisKeysResult, SchemaOperation, SchemaPreview, TableDetail } from './types'
 import type { ConnectionCapabilities } from './driver'
 import type { RegistryConnection } from '../storage/registryTypes'
+import { getCSRFToken } from '../auth/client'
 
 type Fetcher = (input: RequestInfo | URL, init?: RequestInit) => Promise<Response>
+
+function addCSRFHeader(headers: Headers, method = 'GET'): void {
+  if (['GET', 'HEAD', 'OPTIONS'].includes(method.toUpperCase())) return
+  const token = getCSRFToken()
+  if (token) headers.set('X-CSRF-Token', token)
+}
 
 export class APIError extends Error {
   constructor(public status: number, public code: string, message: string, public details?: unknown) {
@@ -28,9 +35,11 @@ export class APIClient {
       let lastError: unknown
       for (let attempt = 0; attempt < 3; attempt += 1) {
         try {
+          const headers = new Headers({Accept: 'application/json'})
+          addCSRFHeader(headers, 'POST')
           const response = await this.fetchWithTimeout(`${this.baseURL}/api/sessions`, {
             method: 'POST',
-            headers: {Accept: 'application/json'},
+            headers,
             credentials: 'same-origin',
           })
           if (!response.ok) {
@@ -302,6 +311,7 @@ export class APIClient {
     const headers = new Headers(init.headers)
     headers.set('Accept', 'application/json')
     if (init.body) headers.set('Content-Type', 'application/json')
+    addCSRFHeader(headers, init.method)
     if (authenticated) headers.set('X-Session-ID', this.sessionId)
     const response = await this.fetchWithTimeout(this.baseURL + path, {...init, headers})
     if (!response.ok) {

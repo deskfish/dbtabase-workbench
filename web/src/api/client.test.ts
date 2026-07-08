@@ -1,5 +1,6 @@
 import { expect, it, vi } from 'vitest'
 import { APIClient, APIError } from './client'
+import { setCSRFToken } from '../auth/client'
 
 it('adds the anonymous session header after creating a session', async () => {
   const fetcher = vi.fn()
@@ -10,6 +11,19 @@ it('adds the anonymous session header after creating a session', async () => {
   await client.metadata('connection-1')
   const request = fetcher.mock.calls[1][1] as RequestInit
   expect(new Headers(request.headers).get('X-Session-ID')).toBe('session-1')
+})
+
+it('adds the CSRF token to unsafe session requests', async () => {
+  setCSRFToken('csrf-test')
+  const fetcher = vi.fn()
+    .mockResolvedValueOnce(new Response(JSON.stringify({sessionId: 'session-1'}), {status: 201, headers: {'Content-Type':'application/json'}}))
+  const client = new APIClient('', fetcher)
+
+  await client.createSession()
+
+  const request = fetcher.mock.calls[0][1] as RequestInit
+  expect(new Headers(request.headers).get('X-CSRF-Token')).toBe('csrf-test')
+  setCSRFToken('')
 })
 
 it('maps a structured API error', async () => {

@@ -18,7 +18,7 @@ const THEME_KEY = 'dbw-theme'
 export function getTheme(): ThemeId {
   const raw = localStorage.getItem(THEME_KEY)
   if (THEME_OPTIONS.some((item) => item.id === raw)) return raw as ThemeId
-  return 'slate'
+  return 'light'
 }
 
 export function saveTheme(theme: ThemeId): void {
