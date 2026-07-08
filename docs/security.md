@@ -1,32 +1,31 @@
-# 安全模型
+# Ops Console Security Model
 
-## 信任边界
+## Trust boundaries
 
-浏览器保存加密后的连接配置；本地解锁密码与派生密钥不离开页面。连接时，数据库凭证通过 HTTPS 发送给 API。API 只在内存中持有连接和凭证，空闲超时或断开后关闭连接。
+Ops Console has local account login backed by PostgreSQL users and Redis login sessions. Browser sessions use HTTP-only cookies and CSRF tokens. Authorization for users, teams, and registry records is enforced in Go; hidden UI controls are not treated as a security boundary.
 
-本工具没有登录体系，因此访问站点本身必须由公司网络、VPN、反向代理访问控制或防火墙保护。匿名会话只能隔离同一站点中的浏览器连接，不能证明员工身份。
+## Credential storage
 
-## 数据库账号
+Unified database and SSH connection secrets are encrypted server-side with AES-256-GCM through versioned credential keys. List and create/update responses expose `hasSecret` only; they must not return passwords, private keys, passphrases, or ciphertext.
 
-数据库权限是最终安全边界。日常查询应使用只读账号；确需写入时，为账号限制库、Schema、表和 DDL 权限。网页中的危险 SQL 提醒不是权限沙箱。
+The existing Database Workbench page still supports browser-local encrypted connection profiles for compatibility until the runtime migration plan replaces that source.
 
-## 网络目标控制
+## Database runtime
 
-默认不限制目标 IP 与端口，用户只需选择数据库类型并填写连接信息。API 仍会拒绝回环、链路本地、组播和未指定地址，避免服务被滥用为内网扫描跳板。若配置了 `DBW_ALLOWED_CIDRS`、`DBW_ALLOWED_PORTS` 或 `DBW_ALLOWED_SUFFIXES`，则在连接前和 DNS 解析后都会校验；DNS 返回多个地址时，任意一个地址不合规都会拒绝整个连接。
+Database permissions remain the final data boundary. Day-to-day querying should use least-privilege database accounts. The web UI warns before risky SQL, but those warnings are not a sandbox.
 
-## 浏览器凭证
+## Network target control
 
-- PBKDF2-SHA-256，随机 16 字节盐，600,000 次迭代
-- AES-256-GCM，每次加密使用随机 12 字节 IV
-- 派生密钥仅存于内存，15 分钟无操作自动锁定
-- 忘记本地解锁密码时无法恢复，只能删除浏览器连接记录
+The API rejects loopback, link-local, multicast, and unspecified destinations to reduce SSRF/scanning risk. Deployments can further restrict targets with `DBW_ALLOWED_CIDRS`, `DBW_ALLOWED_PORTS`, and `DBW_ALLOWED_SUFFIXES`.
 
-浏览器本地加密不能防御已经在页面上下文执行的恶意脚本。因此应用不加载第三方脚本，使用严格 CSP，并应及时更新依赖。
+## Operations
 
-## 资源限制
+- Keep `OC_CREDENTIAL_KEYS` secret and backed up. Losing it makes stored registry secrets unrecoverable.
+- Remove bootstrap admin environment variables after the first successful login.
+- Set `OC_COOKIE_SECURE=true` when serving over HTTPS.
+- Back up PostgreSQL before upgrades.
+- Redis loss only logs users out; PostgreSQL holds durable identity and registry data.
 
-默认查询超时 30 秒、每页 200 行、单次最多读取 10,000 行。服务端查询支持取消。部署时还应通过容器和主机配置限制 CPU、内存、文件描述符及并发连接数。
+## Incident response
 
-## 事件处理
-
-发现疑似凭证泄漏时：立即吊销对应数据库账号、关闭站点入口、保留不含敏感参数的反向代理/API 日志、检查浏览器和依赖完整性、轮换数据库密码，并在重新开放前验证 TLS 与 CSP。
+For suspected credential leakage: revoke affected database/SSH credentials, rotate `OC_CREDENTIAL_KEYS` by adding a new active key for future writes, preserve app/PostgreSQL audit evidence, review dependencies and deployed assets, then re-enable access after smoke verification.
