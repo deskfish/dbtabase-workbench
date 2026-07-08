@@ -12,6 +12,7 @@ import (
 	"time"
 
 	database "dbworkbench/api/internal/db"
+	"dbworkbench/api/internal/identity"
 	"dbworkbench/api/internal/query"
 	"dbworkbench/api/internal/registry"
 	"dbworkbench/api/internal/schema"
@@ -22,6 +23,8 @@ import (
 type Dependencies struct {
 	Ready               func() bool
 	Sessions            *session.Store
+	Identity            IdentityService
+	AuthSessions        *identity.Sessions
 	Registry            *registry.Store
 	ValidateDestination func(context.Context, string, uint16) error
 	OpenConnection      func(context.Context, database.ConnectionInput) (*sql.DB, error)
@@ -31,6 +34,8 @@ type Dependencies struct {
 	Schema              *schema.Service
 	QueryTimeout        time.Duration
 	PageSize            int
+	CookieSecure        bool
+	AuthSessionTTL      time.Duration
 }
 
 func NewRouter(deps Dependencies) http.Handler {
@@ -59,6 +64,9 @@ func NewRouter(deps Dependencies) http.Handler {
 		}
 		writeJSON(w, http.StatusOK, map[string]string{"status": "ok"})
 	})
+	if deps.Identity != nil && deps.AuthSessions != nil {
+		registerAuthRoutes(mux, deps)
+	}
 	if deps.Sessions != nil {
 		mux.HandleFunc("POST /api/sessions", func(w http.ResponseWriter, _ *http.Request) {
 			writeJSON(w, http.StatusCreated, map[string]string{"sessionId": deps.Sessions.CreateSession()})
@@ -221,7 +229,11 @@ func NewRouter(deps Dependencies) http.Handler {
 	if deps.Registry != nil {
 		registerRegistryRoutes(mux, deps.Registry)
 	}
-	return securityHeaders(mux)
+	var handler http.Handler = mux
+	if deps.Identity != nil && deps.AuthSessions != nil {
+		handler = authMiddleware(handler, deps)
+	}
+	return securityHeaders(handler)
 }
 
 func registerSchemaRoutes(mux *http.ServeMux, deps Dependencies) {
