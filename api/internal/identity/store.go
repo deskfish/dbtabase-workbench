@@ -9,6 +9,7 @@ import (
 	"strings"
 
 	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 
@@ -39,9 +40,18 @@ var (
 	ErrAlreadyBootstrapped = errors.New("identity already bootstrapped")
 	ErrInvalidCredentials  = errors.New("invalid credentials")
 	ErrForbidden           = errors.New("forbidden")
+	ErrConflict            = errors.New("conflict")
+	ErrInvalid             = errors.New("invalid")
+	ErrNotFound            = errors.New("not found")
 )
 
 const bootstrapLockKey int64 = 0x4f435f4944454e54
+
+const (
+	pgUniqueViolation     = "23505"
+	pgForeignKeyViolation = "23503"
+	pgCheckViolation      = "23514"
+)
 
 func NewStore(pool *pgxpool.Pool) *Store {
 	return &Store{pool: pool}
@@ -115,14 +125,6 @@ func (s *Store) Authenticate(ctx context.Context, username, password string) (Us
 }
 
 func (s *Store) CreateUser(ctx context.Context, actor Principal, username, displayName, password, role string) (User, error) {
-	allowed, err := s.isSystemAdmin(ctx, actor.User.ID)
-	if err != nil {
-		return User{}, err
-	}
-	if !allowed {
-		return User{}, ErrForbidden
-	}
-
 	username = normalizeUsername(username)
 	displayName = strings.TrimSpace(displayName)
 	passwordHash, err := HashPassword(password)
@@ -134,28 +136,32 @@ func (s *Store) CreateUser(ctx context.Context, actor Principal, username, displ
 		return User{}, err
 	}
 
+	tx, err := s.pool.Begin(ctx)
+	if err != nil {
+		return User{}, fmt.Errorf("begin create user: %w", err)
+	}
+	defer tx.Rollback(ctx)
+	if err := authorizeSystemAdminForUpdate(ctx, tx, actor.User.ID); err != nil {
+		return User{}, err
+	}
+
 	var user User
-	err = s.pool.QueryRow(ctx, `
+	err = tx.QueryRow(ctx, `
 		INSERT INTO users (id, username, display_name, password_hash, system_role)
 		VALUES ($1, $2, $3, $4, $5)
 		RETURNING id, username, display_name, system_role, disabled_at IS NOT NULL`,
 		userID, username, displayName, passwordHash, role,
 	).Scan(&user.ID, &user.Username, &user.DisplayName, &user.SystemRole, &user.Disabled)
 	if err != nil {
-		return User{}, fmt.Errorf("create user: %w", err)
+		return User{}, mapStoreError("create user", err)
+	}
+	if err := tx.Commit(ctx); err != nil {
+		return User{}, fmt.Errorf("commit create user: %w", err)
 	}
 	return user, nil
 }
 
 func (s *Store) CreateTeam(ctx context.Context, actor Principal, name string) (Team, error) {
-	allowed, err := s.isSystemAdmin(ctx, actor.User.ID)
-	if err != nil {
-		return Team{}, err
-	}
-	if !allowed {
-		return Team{}, ErrForbidden
-	}
-
 	teamID, err := newID("team_")
 	if err != nil {
 		return Team{}, err
@@ -166,12 +172,15 @@ func (s *Store) CreateTeam(ctx context.Context, actor Principal, name string) (T
 		return Team{}, fmt.Errorf("begin create team: %w", err)
 	}
 	defer tx.Rollback(ctx)
+	if err := authorizeSystemAdminForUpdate(ctx, tx, actor.User.ID); err != nil {
+		return Team{}, err
+	}
 
 	if _, err := tx.Exec(ctx, "INSERT INTO teams (id, name, created_by) VALUES ($1, $2, $3)", teamID, name, actor.User.ID); err != nil {
-		return Team{}, fmt.Errorf("create team: %w", err)
+		return Team{}, mapStoreError("create team", err)
 	}
 	if _, err := tx.Exec(ctx, "INSERT INTO team_members (team_id, user_id, role) VALUES ($1, $2, 'admin')", teamID, actor.User.ID); err != nil {
-		return Team{}, fmt.Errorf("add team creator: %w", err)
+		return Team{}, mapStoreError("add team creator", err)
 	}
 	if err := tx.Commit(ctx); err != nil {
 		return Team{}, fmt.Errorf("commit create team: %w", err)
@@ -201,7 +210,7 @@ func (s *Store) AddTeamMember(ctx context.Context, actor Principal, teamID, user
 		actor.User.ID, teamID, userID, role,
 	)
 	if err != nil {
-		return fmt.Errorf("add team member: %w", err)
+		return mapStoreError("add team member", err)
 	}
 	if result.RowsAffected() == 0 {
 		return ErrForbidden
@@ -221,6 +230,9 @@ func (s *Store) PrincipalForUser(ctx context.Context, userID string) (Principal,
 		&principal.User.SystemRole,
 		&principal.User.Disabled,
 	)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return Principal{}, ErrNotFound
+	}
 	if err != nil {
 		return Principal{}, fmt.Errorf("load principal user: %w", err)
 	}
@@ -246,17 +258,39 @@ func (s *Store) PrincipalForUser(ctx context.Context, userID string) (Principal,
 	return principal, nil
 }
 
-func (s *Store) isSystemAdmin(ctx context.Context, userID string) (bool, error) {
-	var allowed bool
-	err := s.pool.QueryRow(ctx, `
-		SELECT EXISTS (
-			SELECT 1 FROM users
-			WHERE id = $1 AND disabled_at IS NULL AND system_role = 'admin'
-		)`, userID).Scan(&allowed)
-	if err != nil {
-		return false, fmt.Errorf("authorize system admin: %w", err)
+func authorizeSystemAdminForUpdate(ctx context.Context, tx pgx.Tx, userID string) error {
+	var role string
+	var disabled bool
+	err := tx.QueryRow(ctx, `
+		SELECT system_role, disabled_at IS NOT NULL
+		FROM users
+		WHERE id = $1
+		FOR UPDATE`, userID).Scan(&role, &disabled)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return ErrForbidden
 	}
-	return allowed, nil
+	if err != nil {
+		return fmt.Errorf("authorize system admin: %w", err)
+	}
+	if disabled || role != "admin" {
+		return ErrForbidden
+	}
+	return nil
+}
+
+func mapStoreError(operation string, err error) error {
+	var pgErr *pgconn.PgError
+	if errors.As(err, &pgErr) {
+		switch pgErr.Code {
+		case pgUniqueViolation:
+			return fmt.Errorf("%s: %w (%s)", operation, ErrConflict, pgErr.ConstraintName)
+		case pgCheckViolation:
+			return fmt.Errorf("%s: %w (%s)", operation, ErrInvalid, pgErr.ConstraintName)
+		case pgForeignKeyViolation:
+			return fmt.Errorf("%s: %w (%s)", operation, ErrNotFound, pgErr.ConstraintName)
+		}
+	}
+	return fmt.Errorf("%s: %w", operation, err)
 }
 
 func normalizeUsername(username string) string {
