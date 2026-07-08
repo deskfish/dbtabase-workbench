@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"errors"
 	"log"
 	"net/http"
 	"os"
@@ -12,7 +13,10 @@ import (
 	"dbworkbench/api/internal/config"
 	database "dbworkbench/api/internal/db"
 	"dbworkbench/api/internal/httpapi"
+	"dbworkbench/api/internal/identity"
+	"dbworkbench/api/internal/migrate"
 	"dbworkbench/api/internal/network"
+	"dbworkbench/api/internal/platform"
 	"dbworkbench/api/internal/query"
 	"dbworkbench/api/internal/registry"
 	"dbworkbench/api/internal/schema"
@@ -32,6 +36,36 @@ func main() {
 	if err != nil {
 		log.Fatal(err)
 	}
+	openCtx, openCancel := context.WithTimeout(context.Background(), 15*time.Second)
+	resources, err := platform.Open(openCtx, cfg.PostgresURL, cfg.RedisURL)
+	openCancel()
+	if err != nil {
+		log.Fatal(err)
+	}
+	defer resources.Close()
+	migrateCtx, migrateCancel := context.WithTimeout(context.Background(), 15*time.Second)
+	if err := migrate.Apply(migrateCtx, resources.Postgres); err != nil {
+		migrateCancel()
+		log.Fatal(err)
+	}
+	migrateCancel()
+
+	identityStore := identity.NewStore(resources.Postgres)
+	if cfg.BootstrapAdminUser != "" {
+		bootstrapCtx, bootstrapCancel := context.WithTimeout(context.Background(), 15*time.Second)
+		err := identityStore.BootstrapAdmin(bootstrapCtx, cfg.BootstrapAdminUser, cfg.BootstrapAdminPassword)
+		bootstrapCancel()
+		if err != nil && !errors.Is(err, identity.ErrAlreadyBootstrapped) {
+			log.Fatal(err)
+		}
+	}
+	keyring, err := registry.ParseKeyring(cfg.CredentialKeys, cfg.ActiveCredentialKey)
+	if err != nil {
+		log.Fatal(err)
+	}
+	authSessions := identity.NewSessions(resources.Redis, cfg.SessionTTL)
+	connectionRegistry := registry.NewPGStore(resources.Postgres, keyring)
+
 	policy := network.Policy{AllowedCIDRs: cfg.AllowedCIDRs, AllowedPorts: cfg.AllowedPorts, AllowedSuffixes: cfg.AllowedSuffixes}
 	sessions := session.NewStore(30 * time.Minute)
 	queries := query.NewService(query.Limits{Timeout: cfg.QueryTimeout, PageSize: cfg.PageSize, MaxRows: cfg.MaxRows})
@@ -54,8 +88,16 @@ func main() {
 	server := &http.Server{
 		Addr: cfg.Address,
 		Handler: httpapi.NewRouter(httpapi.Dependencies{
-			Sessions: sessions,
-			Registry: registryStore,
+			Sessions:           sessions,
+			Identity:           identityStore,
+			AuthSessions:       authSessions,
+			ConnectionRegistry: connectionRegistry,
+			Registry:           registryStore,
+			Ready: func() bool {
+				ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+				defer cancel()
+				return resources.Ready(ctx)
+			},
 			ValidateDestination: func(ctx context.Context, host string, port uint16) error {
 				_, err := policy.Validate(ctx, host, port)
 				return err
@@ -67,6 +109,8 @@ func main() {
 			Schema:         schemaService,
 			QueryTimeout:   cfg.QueryTimeout,
 			PageSize:       cfg.PageSize,
+			CookieSecure:   cfg.CookieSecure,
+			AuthSessionTTL: cfg.SessionTTL,
 		}),
 		ReadHeaderTimeout: 5 * time.Second,
 		IdleTimeout:       60 * time.Second,

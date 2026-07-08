@@ -218,6 +218,63 @@ func (s *Store) AddTeamMember(ctx context.Context, actor Principal, teamID, user
 	return nil
 }
 
+func (s *Store) ListUsers(ctx context.Context, actor Principal) ([]User, error) {
+	if actor.User.Disabled {
+		return nil, ErrForbidden
+	}
+	if actor.User.SystemRole != "admin" {
+		return []User{actor.User}, nil
+	}
+	rows, err := s.pool.Query(ctx, `
+		SELECT id, username, display_name, system_role, disabled_at IS NOT NULL
+		FROM users
+		ORDER BY username`)
+	if err != nil {
+		return nil, fmt.Errorf("list users: %w", err)
+	}
+	defer rows.Close()
+	var users []User
+	for rows.Next() {
+		var user User
+		if err := rows.Scan(&user.ID, &user.Username, &user.DisplayName, &user.SystemRole, &user.Disabled); err != nil {
+			return nil, fmt.Errorf("scan user: %w", err)
+		}
+		users = append(users, user)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("list users: %w", err)
+	}
+	return users, nil
+}
+
+func (s *Store) ListTeams(ctx context.Context, actor Principal) ([]Team, error) {
+	if actor.User.Disabled {
+		return nil, ErrForbidden
+	}
+	rows, err := s.pool.Query(ctx, `
+		SELECT teams.id, teams.name, team_members.role
+		FROM teams
+		JOIN team_members ON team_members.team_id = teams.id
+		WHERE team_members.user_id = $1
+		ORDER BY teams.name`, actor.User.ID)
+	if err != nil {
+		return nil, fmt.Errorf("list teams: %w", err)
+	}
+	defer rows.Close()
+	var teams []Team
+	for rows.Next() {
+		var team Team
+		if err := rows.Scan(&team.ID, &team.Name, &team.Role); err != nil {
+			return nil, fmt.Errorf("scan team: %w", err)
+		}
+		teams = append(teams, team)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("list teams: %w", err)
+	}
+	return teams, nil
+}
+
 func (s *Store) PrincipalForUser(ctx context.Context, userID string) (Principal, error) {
 	principal := Principal{Teams: make(map[string]string)}
 	err := s.pool.QueryRow(ctx, `

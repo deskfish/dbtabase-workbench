@@ -91,3 +91,57 @@ func TestAuthLogoutDeletesSessionAndExpiresCookie(t *testing.T) {
 		t.Fatalf("expired cookie = %+v", cookie)
 	}
 }
+
+func TestUserAndTeamAdminRoutes(t *testing.T) {
+	router, sessions, fake := newAuthTestRouter(t, true)
+	loginSession := createAuthSession(t, sessions)
+
+	userBody := `{"username":"new-user","displayName":"New User","password":"password","role":"member"}`
+	userRR := httptest.NewRecorder()
+	userReq := httptest.NewRequest(http.MethodPost, "/api/users", strings.NewReader(userBody))
+	userReq.Header.Set("Content-Type", "application/json")
+	userReq.Header.Set("X-CSRF-Token", loginSession.CSRFToken)
+	userReq.AddCookie(&http.Cookie{Name: authCookieName, Value: loginSession.ID})
+	router.ServeHTTP(userRR, userReq)
+	if userRR.Code != http.StatusCreated {
+		t.Fatalf("user status = %d body = %s", userRR.Code, userRR.Body.String())
+	}
+	if fake.createdUser.Username != "new-user" || strings.Contains(strings.ToLower(userRR.Body.String()), "password") {
+		t.Fatalf("created user=%+v body=%s", fake.createdUser, userRR.Body.String())
+	}
+
+	teamBody := `{"name":"New Team"}`
+	teamRR := httptest.NewRecorder()
+	teamReq := httptest.NewRequest(http.MethodPost, "/api/teams", strings.NewReader(teamBody))
+	teamReq.Header.Set("Content-Type", "application/json")
+	teamReq.Header.Set("X-CSRF-Token", loginSession.CSRFToken)
+	teamReq.AddCookie(&http.Cookie{Name: authCookieName, Value: loginSession.ID})
+	router.ServeHTTP(teamRR, teamReq)
+	if teamRR.Code != http.StatusCreated {
+		t.Fatalf("team status = %d body = %s", teamRR.Code, teamRR.Body.String())
+	}
+	if fake.createdTeam.Name != "New Team" {
+		t.Fatalf("created team=%+v", fake.createdTeam)
+	}
+
+	membersRR := httptest.NewRecorder()
+	membersReq := httptest.NewRequest(http.MethodPost, "/api/teams/team_one/members", strings.NewReader(`{"userId":"usr_bob","role":"member"}`))
+	membersReq.Header.Set("Content-Type", "application/json")
+	membersReq.Header.Set("X-CSRF-Token", loginSession.CSRFToken)
+	membersReq.AddCookie(&http.Cookie{Name: authCookieName, Value: loginSession.ID})
+	router.ServeHTTP(membersRR, membersReq)
+	if membersRR.Code != http.StatusNoContent {
+		t.Fatalf("member status = %d body = %s", membersRR.Code, membersRR.Body.String())
+	}
+	if fake.addedTeamID != "team_one" || fake.addedTeamUserID != "usr_bob" || fake.addedTeamRole != "member" {
+		t.Fatalf("member mutation team=%q user=%q role=%q", fake.addedTeamID, fake.addedTeamUserID, fake.addedTeamRole)
+	}
+
+	listRR := httptest.NewRecorder()
+	listReq := httptest.NewRequest(http.MethodGet, "/api/teams", nil)
+	listReq.AddCookie(&http.Cookie{Name: authCookieName, Value: loginSession.ID})
+	router.ServeHTTP(listRR, listReq)
+	if listRR.Code != http.StatusOK || !strings.Contains(listRR.Body.String(), "Team One") {
+		t.Fatalf("teams status = %d body = %s", listRR.Code, listRR.Body.String())
+	}
+}

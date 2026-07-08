@@ -14,9 +14,14 @@ import (
 )
 
 type fakeIdentity struct {
-	user      identity.User
-	principal identity.Principal
-	authErr   error
+	user            identity.User
+	principal       identity.Principal
+	authErr         error
+	createdUser     identity.User
+	createdTeam     identity.Team
+	addedTeamID     string
+	addedTeamUserID string
+	addedTeamRole   string
 }
 
 func (f *fakeIdentity) Authenticate(context.Context, string, string) (identity.User, error) {
@@ -30,7 +35,36 @@ func (f *fakeIdentity) PrincipalForUser(context.Context, string) (identity.Princ
 	return f.principal, nil
 }
 
+func (f *fakeIdentity) ListUsers(context.Context, identity.Principal) ([]identity.User, error) {
+	return []identity.User{f.user}, nil
+}
+
+func (f *fakeIdentity) ListTeams(context.Context, identity.Principal) ([]identity.Team, error) {
+	return []identity.Team{{ID: "team_one", Name: "Team One", Role: "admin"}}, nil
+}
+
+func (f *fakeIdentity) CreateUser(_ context.Context, _ identity.Principal, username, displayName, _ string, role string) (identity.User, error) {
+	f.createdUser = identity.User{ID: "usr_created", Username: username, DisplayName: displayName, SystemRole: role}
+	return f.createdUser, nil
+}
+
+func (f *fakeIdentity) CreateTeam(_ context.Context, _ identity.Principal, name string) (identity.Team, error) {
+	f.createdTeam = identity.Team{ID: "team_created", Name: name, Role: "admin"}
+	return f.createdTeam, nil
+}
+
+func (f *fakeIdentity) AddTeamMember(_ context.Context, _ identity.Principal, teamID, userID, role string) error {
+	f.addedTeamID = teamID
+	f.addedTeamUserID = userID
+	f.addedTeamRole = role
+	return nil
+}
+
 func newAuthTestRouter(t *testing.T, secureCookie bool) (http.Handler, *identity.Sessions, *fakeIdentity) {
+	return newAuthTestRouterWithRegistry(t, secureCookie, nil)
+}
+
+func newAuthTestRouterWithRegistry(t *testing.T, secureCookie bool, connections ConnectionRegistry) (http.Handler, *identity.Sessions, *fakeIdentity) {
 	t.Helper()
 	server := miniredis.RunT(t)
 	client := redis.NewClient(&redis.Options{Addr: server.Addr()})
@@ -44,11 +78,12 @@ func newAuthTestRouter(t *testing.T, secureCookie bool) (http.Handler, *identity
 		},
 	}
 	router := NewRouter(Dependencies{
-		Sessions:       connectionSession.NewStore(time.Minute),
-		Identity:       fake,
-		AuthSessions:   sessions,
-		AuthSessionTTL: time.Hour,
-		CookieSecure:   secureCookie,
+		Sessions:           connectionSession.NewStore(time.Minute),
+		Identity:           fake,
+		AuthSessions:       sessions,
+		AuthSessionTTL:     time.Hour,
+		CookieSecure:       secureCookie,
+		ConnectionRegistry: connections,
 	})
 	return router, sessions, fake
 }

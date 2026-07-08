@@ -14,6 +14,15 @@ type IdentityService interface {
 	PrincipalForUser(context.Context, string) (identity.Principal, error)
 }
 
+type IdentityAdminService interface {
+	IdentityService
+	ListUsers(context.Context, identity.Principal) ([]identity.User, error)
+	ListTeams(context.Context, identity.Principal) ([]identity.Team, error)
+	CreateUser(context.Context, identity.Principal, string, string, string, string) (identity.User, error)
+	CreateTeam(context.Context, identity.Principal, string) (identity.Team, error)
+	AddTeamMember(context.Context, identity.Principal, string, string, string) error
+}
+
 type userResponse struct {
 	ID          string `json:"id"`
 	Username    string `json:"username"`
@@ -82,6 +91,108 @@ func registerAuthRoutes(mux *http.ServeMux, deps Dependencies) {
 	})
 }
 
+type teamResponse struct {
+	ID   string `json:"id"`
+	Name string `json:"name"`
+	Role string `json:"role"`
+}
+
+func registerUserTeamRoutes(mux *http.ServeMux, service IdentityAdminService) {
+	mux.HandleFunc("GET /api/users", func(w http.ResponseWriter, r *http.Request) {
+		principal, ok := requirePrincipal(w, r)
+		if !ok {
+			return
+		}
+		users, err := service.ListUsers(r.Context(), principal)
+		if err != nil {
+			writeIdentityError(w, err)
+			return
+		}
+		items := make([]userResponse, 0, len(users))
+		for _, user := range users {
+			items = append(items, toUserResponse(user))
+		}
+		writeJSON(w, http.StatusOK, map[string]any{"users": items})
+	})
+
+	mux.HandleFunc("POST /api/users", func(w http.ResponseWriter, r *http.Request) {
+		principal, ok := requirePrincipal(w, r)
+		if !ok {
+			return
+		}
+		var input struct {
+			Username    string `json:"username"`
+			DisplayName string `json:"displayName"`
+			Password    string `json:"password"`
+			Role        string `json:"role"`
+		}
+		if err := decodeJSON(w, r, &input); err != nil {
+			return
+		}
+		user, err := service.CreateUser(r.Context(), principal, input.Username, input.DisplayName, input.Password, input.Role)
+		if err != nil {
+			writeIdentityError(w, err)
+			return
+		}
+		writeJSON(w, http.StatusCreated, map[string]any{"user": toUserResponse(user)})
+	})
+
+	mux.HandleFunc("GET /api/teams", func(w http.ResponseWriter, r *http.Request) {
+		principal, ok := requirePrincipal(w, r)
+		if !ok {
+			return
+		}
+		teams, err := service.ListTeams(r.Context(), principal)
+		if err != nil {
+			writeIdentityError(w, err)
+			return
+		}
+		items := make([]teamResponse, 0, len(teams))
+		for _, team := range teams {
+			items = append(items, toTeamResponse(team))
+		}
+		writeJSON(w, http.StatusOK, map[string]any{"teams": items})
+	})
+
+	mux.HandleFunc("POST /api/teams", func(w http.ResponseWriter, r *http.Request) {
+		principal, ok := requirePrincipal(w, r)
+		if !ok {
+			return
+		}
+		var input struct {
+			Name string `json:"name"`
+		}
+		if err := decodeJSON(w, r, &input); err != nil {
+			return
+		}
+		team, err := service.CreateTeam(r.Context(), principal, input.Name)
+		if err != nil {
+			writeIdentityError(w, err)
+			return
+		}
+		writeJSON(w, http.StatusCreated, map[string]any{"team": toTeamResponse(team)})
+	})
+
+	mux.HandleFunc("POST /api/teams/{id}/members", func(w http.ResponseWriter, r *http.Request) {
+		principal, ok := requirePrincipal(w, r)
+		if !ok {
+			return
+		}
+		var input struct {
+			UserID string `json:"userId"`
+			Role   string `json:"role"`
+		}
+		if err := decodeJSON(w, r, &input); err != nil {
+			return
+		}
+		if err := service.AddTeamMember(r.Context(), principal, r.PathValue("id"), input.UserID, input.Role); err != nil {
+			writeIdentityError(w, err)
+			return
+		}
+		w.WriteHeader(http.StatusNoContent)
+	})
+}
+
 func setAuthCookie(w http.ResponseWriter, deps Dependencies, sessionID string) {
 	ttl := authSessionTTL(deps)
 	http.SetCookie(w, &http.Cookie{
@@ -123,5 +234,24 @@ func toUserResponse(user identity.User) userResponse {
 		DisplayName: user.DisplayName,
 		SystemRole:  user.SystemRole,
 		Disabled:    user.Disabled,
+	}
+}
+
+func toTeamResponse(team identity.Team) teamResponse {
+	return teamResponse{ID: team.ID, Name: team.Name, Role: team.Role}
+}
+
+func writeIdentityError(w http.ResponseWriter, err error) {
+	switch {
+	case errors.Is(err, identity.ErrForbidden):
+		writeError(w, http.StatusForbidden, "forbidden", "没有权限")
+	case errors.Is(err, identity.ErrConflict):
+		writeError(w, http.StatusConflict, "conflict", "记录已存在")
+	case errors.Is(err, identity.ErrInvalid):
+		writeError(w, http.StatusBadRequest, "invalid", "请求无效")
+	case errors.Is(err, identity.ErrNotFound):
+		writeError(w, http.StatusNotFound, "not_found", "记录不存在")
+	default:
+		writeError(w, http.StatusBadRequest, "identity_failed", err.Error())
 	}
 }

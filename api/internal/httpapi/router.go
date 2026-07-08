@@ -25,6 +25,7 @@ type Dependencies struct {
 	Sessions            *session.Store
 	Identity            IdentityService
 	AuthSessions        *identity.Sessions
+	ConnectionRegistry  ConnectionRegistry
 	Registry            *registry.Store
 	ValidateDestination func(context.Context, string, uint16) error
 	OpenConnection      func(context.Context, database.ConnectionInput) (*sql.DB, error)
@@ -66,6 +67,12 @@ func NewRouter(deps Dependencies) http.Handler {
 	})
 	if deps.Identity != nil && deps.AuthSessions != nil {
 		registerAuthRoutes(mux, deps)
+		if admin, ok := deps.Identity.(IdentityAdminService); ok {
+			registerUserTeamRoutes(mux, admin)
+		}
+	}
+	if deps.ConnectionRegistry != nil {
+		registerConnectionRegistryRoutes(mux, deps.ConnectionRegistry)
 	}
 	if deps.Sessions != nil {
 		mux.HandleFunc("POST /api/sessions", func(w http.ResponseWriter, _ *http.Request) {
@@ -579,7 +586,7 @@ func requestID() string {
 }
 
 func writeError(w http.ResponseWriter, status int, code, message string) {
-	writeJSON(w, status, map[string]any{"error": map[string]string{"code": code, "message": message}})
+	writeJSON(w, status, map[string]any{"error": map[string]any{"code": code, "message": message, "requestId": w.Header().Get("X-Request-ID")}})
 }
 
 func writeJSON(w http.ResponseWriter, status int, value any) {
