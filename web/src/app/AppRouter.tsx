@@ -4,8 +4,16 @@ import { LoginPage } from '../auth/LoginPage'
 import { AppShell } from '../layout/AppShell'
 import { ConnectionsPage } from '../pages/ConnectionsPage'
 import { DatabasePage } from '../pages/DatabasePage'
-import { LogsPendingPage } from '../pages/LogsPendingPage'
-import { SettingsPage } from '../pages/SettingsPage'
+import { LogsPage } from '../pages/LogsPage'
+import {
+  SettingsIndexRedirect,
+  SettingsLayout,
+  SettingsProfilePage,
+  SettingsTeamsGuard,
+  SettingsTeamsPage,
+  SettingsUsersGuard,
+  SettingsUsersPage,
+} from '../settings'
 
 function RequireAuth() {
   const {status, reload} = useAuth()
@@ -25,8 +33,17 @@ export function AppRouter() {
         <Route index element={<Navigate to="/connections" replace />} />
         <Route path="/connections" element={<ConnectionsPage />} />
         <Route path="/database" element={<DatabasePage />} />
-        <Route path="/logs" element={<LogsPendingPage />} />
-        <Route path="/settings" element={<SettingsPage />} />
+        <Route path="/logs" element={<LogsPage />} />
+        <Route path="/settings" element={<SettingsLayout />}>
+          <Route index element={<SettingsIndexRedirect />} />
+          <Route path="profile" element={<SettingsProfilePage />} />
+          <Route element={<SettingsUsersGuard />}>
+            <Route path="users" element={<SettingsUsersPage />} />
+          </Route>
+          <Route element={<SettingsTeamsGuard />}>
+            <Route path="teams" element={<SettingsTeamsPage />} />
+          </Route>
+        </Route>
       </Route>
       <Route path="*" element={<Navigate to="/" replace />} />
     </Routes>

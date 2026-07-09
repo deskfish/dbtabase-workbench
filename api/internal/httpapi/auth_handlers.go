@@ -19,8 +19,15 @@ type IdentityAdminService interface {
 	ListUsers(context.Context, identity.Principal) ([]identity.User, error)
 	ListTeams(context.Context, identity.Principal) ([]identity.Team, error)
 	CreateUser(context.Context, identity.Principal, string, string, string, string) (identity.User, error)
+	UpdateUser(context.Context, identity.Principal, string, identity.UserUpdate) (identity.User, error)
+	SetUserTeamMemberships(context.Context, identity.Principal, string, []identity.TeamAssignment) error
 	CreateTeam(context.Context, identity.Principal, string) (identity.Team, error)
+	UpdateTeam(context.Context, identity.Principal, string, string) (identity.Team, error)
+	DeleteTeam(context.Context, identity.Principal, string) error
 	AddTeamMember(context.Context, identity.Principal, string, string, string) error
+	SetTeamMemberRole(context.Context, identity.Principal, string, string, string) error
+	RemoveTeamMember(context.Context, identity.Principal, string, string) error
+	ListTeamMembers(context.Context, identity.Principal, string) ([]identity.TeamMember, error)
 }
 
 type userResponse struct {
@@ -97,7 +104,16 @@ type teamResponse struct {
 	Role string `json:"role"`
 }
 
-func registerUserTeamRoutes(mux *http.ServeMux, service IdentityAdminService) {
+type teamMemberResponse struct {
+	User userResponse `json:"user"`
+	Role string       `json:"role"`
+}
+
+func registerUserTeamRoutes(mux *http.ServeMux, deps Dependencies) {
+	service, ok := deps.Identity.(IdentityAdminService)
+	if !ok {
+		return
+	}
 	mux.HandleFunc("GET /api/users", func(w http.ResponseWriter, r *http.Request) {
 		principal, ok := requirePrincipal(w, r)
 		if !ok {
@@ -137,6 +153,53 @@ func registerUserTeamRoutes(mux *http.ServeMux, service IdentityAdminService) {
 		writeJSON(w, http.StatusCreated, map[string]any{"user": toUserResponse(user)})
 	})
 
+	mux.HandleFunc("PATCH /api/users/{id}", func(w http.ResponseWriter, r *http.Request) {
+		principal, ok := requirePrincipal(w, r)
+		if !ok {
+			return
+		}
+		var input struct {
+			DisplayName *string `json:"displayName"`
+			Role        *string `json:"role"`
+			Disabled    *bool   `json:"disabled"`
+		}
+		if err := decodeJSON(w, r, &input); err != nil {
+			return
+		}
+		userID := r.PathValue("id")
+		user, err := service.UpdateUser(r.Context(), principal, userID, identity.UserUpdate{
+			DisplayName: input.DisplayName,
+			SystemRole:  input.Role,
+			Disabled:    input.Disabled,
+		})
+		if err != nil {
+			writeIdentityError(w, err)
+			return
+		}
+		if input.Disabled != nil && *input.Disabled && deps.AuthSessions != nil {
+			_ = deps.AuthSessions.DeleteUser(r.Context(), userID)
+		}
+		writeJSON(w, http.StatusOK, map[string]any{"user": toUserResponse(user)})
+	})
+
+	mux.HandleFunc("PUT /api/users/{id}/teams", func(w http.ResponseWriter, r *http.Request) {
+		principal, ok := requirePrincipal(w, r)
+		if !ok {
+			return
+		}
+		var input struct {
+			Teams []identity.TeamAssignment `json:"teams"`
+		}
+		if err := decodeJSON(w, r, &input); err != nil {
+			return
+		}
+		if err := service.SetUserTeamMemberships(r.Context(), principal, r.PathValue("id"), input.Teams); err != nil {
+			writeIdentityError(w, err)
+			return
+		}
+		w.WriteHeader(http.StatusNoContent)
+	})
+
 	mux.HandleFunc("GET /api/teams", func(w http.ResponseWriter, r *http.Request) {
 		principal, ok := requirePrincipal(w, r)
 		if !ok {
@@ -173,6 +236,37 @@ func registerUserTeamRoutes(mux *http.ServeMux, service IdentityAdminService) {
 		writeJSON(w, http.StatusCreated, map[string]any{"team": toTeamResponse(team)})
 	})
 
+	mux.HandleFunc("PATCH /api/teams/{id}", func(w http.ResponseWriter, r *http.Request) {
+		principal, ok := requirePrincipal(w, r)
+		if !ok {
+			return
+		}
+		var input struct {
+			Name string `json:"name"`
+		}
+		if err := decodeJSON(w, r, &input); err != nil {
+			return
+		}
+		team, err := service.UpdateTeam(r.Context(), principal, r.PathValue("id"), input.Name)
+		if err != nil {
+			writeIdentityError(w, err)
+			return
+		}
+		writeJSON(w, http.StatusOK, map[string]any{"team": toTeamResponse(team)})
+	})
+
+	mux.HandleFunc("DELETE /api/teams/{id}", func(w http.ResponseWriter, r *http.Request) {
+		principal, ok := requirePrincipal(w, r)
+		if !ok {
+			return
+		}
+		if err := service.DeleteTeam(r.Context(), principal, r.PathValue("id")); err != nil {
+			writeIdentityError(w, err)
+			return
+		}
+		w.WriteHeader(http.StatusNoContent)
+	})
+
 	mux.HandleFunc("POST /api/teams/{id}/members", func(w http.ResponseWriter, r *http.Request) {
 		principal, ok := requirePrincipal(w, r)
 		if !ok {
@@ -190,6 +284,53 @@ func registerUserTeamRoutes(mux *http.ServeMux, service IdentityAdminService) {
 			return
 		}
 		w.WriteHeader(http.StatusNoContent)
+	})
+
+	mux.HandleFunc("PATCH /api/teams/{id}/members/{userId}", func(w http.ResponseWriter, r *http.Request) {
+		principal, ok := requirePrincipal(w, r)
+		if !ok {
+			return
+		}
+		var input struct {
+			Role string `json:"role"`
+		}
+		if err := decodeJSON(w, r, &input); err != nil {
+			return
+		}
+		if err := service.SetTeamMemberRole(r.Context(), principal, r.PathValue("id"), r.PathValue("userId"), input.Role); err != nil {
+			writeIdentityError(w, err)
+			return
+		}
+		w.WriteHeader(http.StatusNoContent)
+	})
+
+	mux.HandleFunc("DELETE /api/teams/{id}/members/{userId}", func(w http.ResponseWriter, r *http.Request) {
+		principal, ok := requirePrincipal(w, r)
+		if !ok {
+			return
+		}
+		if err := service.RemoveTeamMember(r.Context(), principal, r.PathValue("id"), r.PathValue("userId")); err != nil {
+			writeIdentityError(w, err)
+			return
+		}
+		w.WriteHeader(http.StatusNoContent)
+	})
+
+	mux.HandleFunc("GET /api/teams/{id}/members", func(w http.ResponseWriter, r *http.Request) {
+		principal, ok := requirePrincipal(w, r)
+		if !ok {
+			return
+		}
+		members, err := service.ListTeamMembers(r.Context(), principal, r.PathValue("id"))
+		if err != nil {
+			writeIdentityError(w, err)
+			return
+		}
+		items := make([]teamMemberResponse, 0, len(members))
+		for _, member := range members {
+			items = append(items, toTeamMemberResponse(member))
+		}
+		writeJSON(w, http.StatusOK, map[string]any{"members": items})
 	})
 }
 
@@ -241,12 +382,20 @@ func toTeamResponse(team identity.Team) teamResponse {
 	return teamResponse{ID: team.ID, Name: team.Name, Role: team.Role}
 }
 
+func toTeamMemberResponse(member identity.TeamMember) teamMemberResponse {
+	return teamMemberResponse{User: toUserResponse(member.User), Role: member.Role}
+}
+
 func writeIdentityError(w http.ResponseWriter, err error) {
 	switch {
 	case errors.Is(err, identity.ErrForbidden):
 		writeError(w, http.StatusForbidden, "forbidden", "没有权限")
+	case errors.Is(err, identity.ErrLastTeamAdmin):
+		writeError(w, http.StatusConflict, "last_team_admin", "该团队至少需要保留一名管理员")
+	case errors.Is(err, identity.ErrLastSystemAdmin):
+		writeError(w, http.StatusConflict, "last_system_admin", "系统至少需要保留一名未禁用的管理员")
 	case errors.Is(err, identity.ErrConflict):
-		writeError(w, http.StatusConflict, "conflict", "记录已存在")
+		writeError(w, http.StatusConflict, "conflict", "记录已存在或发生冲突")
 	case errors.Is(err, identity.ErrInvalid):
 		writeError(w, http.StatusBadRequest, "invalid", "请求无效")
 	case errors.Is(err, identity.ErrNotFound):

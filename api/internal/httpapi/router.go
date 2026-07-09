@@ -27,6 +27,9 @@ type Dependencies struct {
 	Identity            IdentityService
 	AuthSessions        *identity.Sessions
 	ConnectionRegistry  ConnectionRegistry
+	Logs                LogStore
+	LogConnections      LogConnectionStore
+	LogSSH              LogSSHService
 	Registry            *registry.Store
 	ValidateDestination func(context.Context, string, uint16) error
 	OpenConnection      func(context.Context, database.ConnectionInput) (*sql.DB, error)
@@ -68,12 +71,13 @@ func NewRouter(deps Dependencies) http.Handler {
 	})
 	if deps.Identity != nil && deps.AuthSessions != nil {
 		registerAuthRoutes(mux, deps)
-		if admin, ok := deps.Identity.(IdentityAdminService); ok {
-			registerUserTeamRoutes(mux, admin)
-		}
+		registerUserTeamRoutes(mux, deps)
 	}
 	if deps.ConnectionRegistry != nil {
 		registerConnectionRegistryRoutes(mux, deps.ConnectionRegistry)
+	}
+	if deps.Logs != nil {
+		registerLogRoutes(mux, deps)
 	}
 	if deps.Sessions != nil {
 		mux.HandleFunc("POST /api/sessions", func(w http.ResponseWriter, _ *http.Request) {

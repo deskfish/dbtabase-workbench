@@ -33,7 +33,7 @@ services:
       context: ..
     restart: unless-stopped
     ports:
-      - "8080:8080"
+      - "80:8080"
     environment:
       DBW_ADDRESS: :8080
       DBW_ALLOWED_CIDRS: ${DBW_ALLOWED_CIDRS:-}

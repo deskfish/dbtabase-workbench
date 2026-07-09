@@ -132,8 +132,32 @@ func TestUserAndTeamAuthorizationIntegration(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	otherAdminUser, err := store.CreateUser(ctx, root, "other-admin", "Other Admin", "password", "admin")
+	if err != nil {
+		t.Fatal(err)
+	}
+	otherAdmin, err := store.PrincipalForUser(ctx, otherAdminUser.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	otherTeam, err := store.CreateTeam(ctx, otherAdmin, "Other Admin Team")
+	if err != nil {
+		t.Fatal(err)
+	}
 	if teamOne.Role != "admin" || teamTwo.Role != "admin" {
 		t.Fatalf("created teams = %+v, %+v", teamOne, teamTwo)
+	}
+	rootTeams, err := store.ListTeams(ctx, root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(rootTeams) != 3 {
+		t.Fatalf("system admin teams = %+v, want all teams including %s", rootTeams, otherTeam.ID)
+	}
+	for _, team := range rootTeams {
+		if team.ID == otherTeam.ID && team.Role != "" {
+			t.Fatalf("non-member team role = %q, want empty", team.Role)
+		}
 	}
 
 	target, err := store.CreateUser(ctx, root, "target", "Target", "password", "member")
@@ -171,6 +195,109 @@ func TestUserAndTeamAuthorizationIntegration(t *testing.T) {
 	}
 	if _, ok := targetPrincipal.Teams[teamTwo.ID]; ok {
 		t.Fatalf("target received unrelated team permission: %#v", targetPrincipal.Teams)
+	}
+	targetTeams, err := store.ListTeams(ctx, targetPrincipal)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(targetTeams) != 1 || targetTeams[0].ID != teamOne.ID {
+		t.Fatalf("target visible teams = %+v, want only %s", targetTeams, teamOne.ID)
+	}
+}
+
+func TestTeamManagementMutationsIntegration(t *testing.T) {
+	ctx, cancel := context.WithTimeout(context.Background(), 45*time.Second)
+	defer cancel()
+	store, _ := integrationStore(t, ctx)
+	root := bootstrapRootPrincipal(t, ctx, store)
+
+	team, err := store.CreateTeam(ctx, root, "Ops")
+	if err != nil {
+		t.Fatal(err)
+	}
+	bob, err := store.CreateUser(ctx, root, "bob", "Bob", "password", "member")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := store.AddTeamMember(ctx, root, team.ID, bob.ID, "admin"); err != nil {
+		t.Fatal(err)
+	}
+	renamed, err := store.UpdateTeam(ctx, root, team.ID, "Platform Ops")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if renamed.Name != "Platform Ops" {
+		t.Fatalf("renamed team = %+v", renamed)
+	}
+	if err := store.SetTeamMemberRole(ctx, root, team.ID, bob.ID, "member"); err != nil {
+		t.Fatal(err)
+	}
+	if err := store.RemoveTeamMember(ctx, root, team.ID, root.User.ID); !errors.Is(err, ErrLastTeamAdmin) {
+		t.Fatalf("remove last admin error = %v, want %v", err, ErrLastTeamAdmin)
+	}
+	if err := store.SetTeamMemberRole(ctx, root, team.ID, bob.ID, "admin"); err != nil {
+		t.Fatal(err)
+	}
+	if err := store.RemoveTeamMember(ctx, root, team.ID, root.User.ID); err != nil {
+		t.Fatal(err)
+	}
+	if err := store.SetTeamMemberRole(ctx, root, team.ID, bob.ID, "member"); !errors.Is(err, ErrLastTeamAdmin) {
+		t.Fatalf("downgrade last admin error = %v, want %v", err, ErrLastTeamAdmin)
+	}
+	if err := store.DeleteTeam(ctx, root, team.ID); err != nil {
+		t.Fatal(err)
+	}
+	if members, err := store.ListTeamMembers(ctx, root, team.ID); !errors.Is(err, ErrNotFound) && len(members) != 0 {
+		t.Fatalf("members after deleted team = %+v err=%v", members, err)
+	}
+}
+
+func TestSetUserTeamMembershipsIntegration(t *testing.T) {
+	ctx, cancel := context.WithTimeout(context.Background(), 45*time.Second)
+	defer cancel()
+	store, _ := integrationStore(t, ctx)
+	root := bootstrapRootPrincipal(t, ctx, store)
+
+	teamOne, err := store.CreateTeam(ctx, root, "Team One")
+	if err != nil {
+		t.Fatal(err)
+	}
+	teamTwo, err := store.CreateTeam(ctx, root, "Team Two")
+	if err != nil {
+		t.Fatal(err)
+	}
+	bob, err := store.CreateUser(ctx, root, "bob-memberships", "Bob", "password", "member")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := store.SetUserTeamMemberships(ctx, root, bob.ID, []TeamAssignment{
+		{TeamID: teamOne.ID, Role: "member"},
+		{TeamID: teamTwo.ID, Role: "admin"},
+	}); err != nil {
+		t.Fatal(err)
+	}
+	bobPrincipal, err := store.PrincipalForUser(ctx, bob.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if bobPrincipal.Teams[teamOne.ID] != "member" || bobPrincipal.Teams[teamTwo.ID] != "admin" {
+		t.Fatalf("bob teams = %#v", bobPrincipal.Teams)
+	}
+	if err := store.SetUserTeamMemberships(ctx, root, bob.ID, []TeamAssignment{{TeamID: teamOne.ID, Role: "admin"}}); err != nil {
+		t.Fatal(err)
+	}
+	bobPrincipal, err = store.PrincipalForUser(ctx, bob.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(bobPrincipal.Teams) != 1 || bobPrincipal.Teams[teamOne.ID] != "admin" {
+		t.Fatalf("bob replaced teams = %#v", bobPrincipal.Teams)
+	}
+	if err := store.SetUserTeamMemberships(ctx, root, root.User.ID, nil); !errors.Is(err, ErrLastTeamAdmin) {
+		t.Fatalf("remove root last team admin error = %v, want %v", err, ErrLastTeamAdmin)
+	}
+	if err := store.SetUserTeamMemberships(ctx, root, bob.ID, []TeamAssignment{{TeamID: "team_missing", Role: "member"}}); !errors.Is(err, ErrNotFound) {
+		t.Fatalf("missing team assignment error = %v, want %v", err, ErrNotFound)
 	}
 }
 
@@ -352,6 +479,41 @@ func bootstrapRootPrincipal(t *testing.T, ctx context.Context, store *Store) Pri
 		t.Fatalf("load root principal: %v", err)
 	}
 	return root
+}
+
+func TestUpdateUserDisableIntegration(t *testing.T) {
+	ctx, cancel := context.WithTimeout(context.Background(), 45*time.Second)
+	defer cancel()
+	store, _ := integrationStore(t, ctx)
+	root := bootstrapRootPrincipal(t, ctx, store)
+
+	target, err := store.CreateUser(ctx, root, "disable-me", "Disable Me", "password", "member")
+	if err != nil {
+		t.Fatal(err)
+	}
+	disabled := true
+	updated, err := store.UpdateUser(ctx, root, target.ID, UserUpdate{Disabled: &disabled})
+	if err != nil {
+		t.Fatalf("disable user: %v", err)
+	}
+	if !updated.Disabled {
+		t.Fatalf("updated user = %+v", updated)
+	}
+	if _, err := store.Authenticate(ctx, "disable-me", "password"); !errors.Is(err, ErrInvalidCredentials) {
+		t.Fatalf("disabled login error = %v, want %v", err, ErrInvalidCredentials)
+	}
+
+	enabled := false
+	updated, err = store.UpdateUser(ctx, root, target.ID, UserUpdate{Disabled: &enabled})
+	if err != nil {
+		t.Fatalf("enable user: %v", err)
+	}
+	if updated.Disabled {
+		t.Fatalf("enabled user = %+v", updated)
+	}
+	if _, err := store.Authenticate(ctx, "disable-me", "password"); err != nil {
+		t.Fatalf("re-enabled login: %v", err)
+	}
 }
 
 func integrationStore(t *testing.T, ctx context.Context) (*Store, *pgxpool.Pool) {

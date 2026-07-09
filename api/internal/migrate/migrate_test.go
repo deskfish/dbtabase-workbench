@@ -18,11 +18,14 @@ func TestFilesAreOrderedAndNamed(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(files) != 1 || files[0].Name != "0001_identity_registry.sql" {
+	if len(files) != 2 || files[0].Name != "0001_identity_registry.sql" || files[1].Name != "0002_logs.sql" {
 		t.Fatalf("files = %+v", files)
 	}
 	if !strings.Contains(files[0].SQL, "CREATE TABLE users") || !strings.Contains(files[0].SQL, "CREATE TABLE connections") {
 		t.Fatal("required tables missing")
+	}
+	if !strings.Contains(files[1].SQL, "CREATE TABLE log_sessions") || !strings.Contains(files[1].SQL, "CREATE TABLE log_entries") {
+		t.Fatal("required log tables missing")
 	}
 }
 
@@ -124,11 +127,11 @@ func TestApplyIntegration(t *testing.T) {
 	if err := pool.QueryRow(ctx, "SELECT count(*) FROM schema_migrations").Scan(&applied); err != nil {
 		t.Fatalf("count schema migrations: %v", err)
 	}
-	if applied != 1 {
-		t.Fatalf("applied migrations = %d, want 1", applied)
+	if applied != 2 {
+		t.Fatalf("applied migrations = %d, want 2", applied)
 	}
 
-	for _, table := range []string{"users", "teams", "team_members", "connections", "audit_events"} {
+	for _, table := range []string{"users", "teams", "team_members", "connections", "audit_events", "log_sessions", "log_source_files", "log_entries", "log_scope_stats", "log_time_buckets"} {
 		var exists bool
 		if err := pool.QueryRow(ctx, "SELECT to_regclass($1) IS NOT NULL", table).Scan(&exists); err != nil {
 			t.Fatalf("check table %s: %v", table, err)

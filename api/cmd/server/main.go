@@ -14,6 +14,7 @@ import (
 	database "dbworkbench/api/internal/db"
 	"dbworkbench/api/internal/httpapi"
 	"dbworkbench/api/internal/identity"
+	"dbworkbench/api/internal/logs"
 	"dbworkbench/api/internal/migrate"
 	"dbworkbench/api/internal/network"
 	"dbworkbench/api/internal/platform"
@@ -21,6 +22,7 @@ import (
 	"dbworkbench/api/internal/registry"
 	"dbworkbench/api/internal/schema"
 	"dbworkbench/api/internal/session"
+	"dbworkbench/api/internal/sshlog"
 )
 
 func main() {
@@ -65,6 +67,8 @@ func main() {
 	}
 	authSessions := identity.NewSessions(resources.Redis, cfg.SessionTTL)
 	connectionRegistry := registry.NewPGStore(resources.Postgres, keyring)
+	logStore := logs.NewStore(resources.Postgres, "/data/log_uploads")
+	sshLogService := sshlog.NewService()
 
 	policy := network.Policy{AllowedCIDRs: cfg.AllowedCIDRs, AllowedPorts: cfg.AllowedPorts, AllowedSuffixes: cfg.AllowedSuffixes}
 	sessions := session.NewStore(30 * time.Minute)
@@ -92,6 +96,9 @@ func main() {
 			Identity:           identityStore,
 			AuthSessions:       authSessions,
 			ConnectionRegistry: connectionRegistry,
+			Logs:               logStore,
+			LogConnections:     connectionRegistry,
+			LogSSH:             sshLogService,
 			Registry:           registryStore,
 			Ready: func() bool {
 				ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)

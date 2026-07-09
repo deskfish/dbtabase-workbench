@@ -84,6 +84,44 @@ func TestPGStoreAuthorizationAndSecretUseIntegration(t *testing.T) {
 		t.Fatalf("non-member secret use error = %v, want %v", err, ErrForbidden)
 	}
 
+	idStore := identity.NewStore(fixture.pool)
+	otherAdminUser, err := idStore.CreateUser(ctx, fixture.root, "other-admin", "Other Admin", "password", "admin")
+	if err != nil {
+		t.Fatalf("create other admin: %v", err)
+	}
+	otherAdmin, err := idStore.PrincipalForUser(ctx, otherAdminUser.ID)
+	if err != nil {
+		t.Fatalf("load other admin principal: %v", err)
+	}
+	otherTeam, err := idStore.CreateTeam(ctx, otherAdmin, "Other Team")
+	if err != nil {
+		t.Fatalf("create other team: %v", err)
+	}
+	otherAdmin, err = idStore.PrincipalForUser(ctx, otherAdminUser.ID)
+	if err != nil {
+		t.Fatalf("reload other admin principal: %v", err)
+	}
+	otherTeamConn, err := fixture.store.Create(ctx, otherAdmin, SaveInput{
+		Connection: Connection{ID: "conn_other_team", Name: "Other Team SSH", Kind: "ssh", Driver: "ssh", Scope: "team", TeamID: otherTeam.ID, Endpoint: rawJSON(`{"host":"other-bastion.local","port":22}`), Config: rawJSON(`{}`)},
+		Secret:     &Secret{Username: "ops", PrivateKey: "other-private-key"},
+	})
+	if err != nil {
+		t.Fatalf("other team admin create: %v", err)
+	}
+	rootList, err := fixture.store.List(ctx, fixture.root, "", "")
+	if err != nil {
+		t.Fatalf("system admin list: %v", err)
+	}
+	if !hasConnection(rootList, teamConn.ID) || !hasConnection(rootList, otherTeamConn.ID) {
+		t.Fatalf("system admin list = %+v, want both team connections", rootList)
+	}
+	if hasConnection(rootList, personal.ID) {
+		t.Fatalf("system admin list leaked personal connection: %+v", rootList)
+	}
+	if _, rootSecret, err := fixture.store.SecretForUse(ctx, fixture.root, otherTeamConn.ID); err != nil || rootSecret.PrivateKey != "other-private-key" {
+		t.Fatalf("system admin team secret use secret=%+v err=%v", rootSecret, err)
+	}
+
 	aliceList, err := fixture.store.List(ctx, fixture.alice, "", "")
 	if err != nil {
 		t.Fatalf("alice list: %v", err)
@@ -272,4 +310,13 @@ func registryIntegration(t *testing.T, ctx context.Context) registryFixture {
 
 func rawJSON(value string) json.RawMessage {
 	return json.RawMessage(value)
+}
+
+func hasConnection(connections []Connection, id string) bool {
+	for _, connection := range connections {
+		if connection.ID == id {
+			return true
+		}
+	}
+	return false
 }

@@ -25,21 +25,22 @@ func NewPGStore(pool *pgxpool.Pool, keys *Keyring) *PGStore {
 }
 
 func (s *PGStore) List(ctx context.Context, p identity.Principal, kind, scope string) ([]Connection, error) {
+	systemAdmin := isSystemAdmin(p)
 	rows, err := s.pool.Query(ctx, `
 		SELECT id, name, kind, driver, scope, owner_user_id, team_id, endpoint, config, octet_length(secret_ciphertext) > 0
 		FROM connections
 		WHERE (
 			(scope = 'personal' AND owner_user_id = $1)
 			OR
-			(scope = 'team' AND EXISTS (
+			(scope = 'team' AND ($4 OR EXISTS (
 				SELECT 1 FROM team_members
 				WHERE team_members.team_id = connections.team_id
 				  AND team_members.user_id = $1
-			))
+			)))
 		)
 		  AND ($2 = '' OR kind = $2)
 		  AND ($3 = '' OR scope = $3)
-		ORDER BY lower(name), id`, p.User.ID, kind, scope)
+		ORDER BY lower(name), id`, p.User.ID, kind, scope, systemAdmin)
 	if err != nil {
 		return nil, fmt.Errorf("list connections: %w", err)
 	}
@@ -316,7 +317,7 @@ func authorizeCreate(p identity.Principal, connection Connection) error {
 		}
 		return nil
 	case "team":
-		if p.User.Disabled || p.Teams[connection.TeamID] != "admin" {
+		if p.User.Disabled || (!isSystemAdmin(p) && p.Teams[connection.TeamID] != "admin") {
 			return ErrForbidden
 		}
 		return nil
@@ -333,7 +334,7 @@ func authorizeMutation(p identity.Principal, connection Connection) error {
 		}
 		return ErrNotFound
 	case "team":
-		if !p.User.Disabled && p.Teams[connection.TeamID] == "admin" {
+		if !p.User.Disabled && (isSystemAdmin(p) || p.Teams[connection.TeamID] == "admin") {
 			return nil
 		}
 		return ErrForbidden
@@ -350,13 +351,17 @@ func authorizeUse(p identity.Principal, connection Connection) error {
 		}
 		return ErrNotFound
 	case "team":
-		if !p.User.Disabled && p.Teams[connection.TeamID] != "" {
+		if !p.User.Disabled && (isSystemAdmin(p) || p.Teams[connection.TeamID] != "") {
 			return nil
 		}
 		return ErrForbidden
 	default:
 		return ErrForbidden
 	}
+}
+
+func isSystemAdmin(p identity.Principal) bool {
+	return !p.User.Disabled && p.User.SystemRole == "admin"
 }
 
 func insertAudit(ctx context.Context, tx pgx.Tx, actorUserID, action string, connection Connection, outcome string) error {

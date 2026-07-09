@@ -27,6 +27,16 @@ type Team struct {
 	Role string
 }
 
+type TeamMember struct {
+	User User
+	Role string
+}
+
+type TeamAssignment struct {
+	TeamID string
+	Role   string
+}
+
 type Principal struct {
 	User  User
 	Teams map[string]string
@@ -43,7 +53,15 @@ var (
 	ErrConflict            = errors.New("conflict")
 	ErrInvalid             = errors.New("invalid")
 	ErrNotFound            = errors.New("not found")
+	ErrLastTeamAdmin       = errors.New("last team admin")
+	ErrLastSystemAdmin     = errors.New("last system admin")
 )
+
+type UserUpdate struct {
+	DisplayName *string
+	SystemRole  *string
+	Disabled    *bool
+}
 
 const bootstrapLockKey int64 = 0x4f435f4944454e54
 
@@ -188,6 +206,156 @@ func (s *Store) CreateTeam(ctx context.Context, actor Principal, name string) (T
 	return Team{ID: teamID, Name: name, Role: "admin"}, nil
 }
 
+func (s *Store) UpdateUser(ctx context.Context, actor Principal, userID string, update UserUpdate) (User, error) {
+	tx, err := s.pool.Begin(ctx)
+	if err != nil {
+		return User{}, fmt.Errorf("begin update user: %w", err)
+	}
+	defer tx.Rollback(ctx)
+	if err := authorizeSystemAdminForUpdate(ctx, tx, actor.User.ID); err != nil {
+		return User{}, err
+	}
+
+	var current User
+	err = tx.QueryRow(ctx, `
+		SELECT id, username, display_name, system_role, disabled_at IS NOT NULL
+		FROM users
+		WHERE id = $1
+		FOR UPDATE`, userID,
+	).Scan(&current.ID, &current.Username, &current.DisplayName, &current.SystemRole, &current.Disabled)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return User{}, ErrNotFound
+	}
+	if err != nil {
+		return User{}, fmt.Errorf("lock update user: %w", err)
+	}
+
+	displayName := current.DisplayName
+	if update.DisplayName != nil {
+		displayName = strings.TrimSpace(*update.DisplayName)
+		if displayName == "" {
+			return User{}, ErrInvalid
+		}
+	}
+	role := current.SystemRole
+	if update.SystemRole != nil {
+		role = strings.TrimSpace(*update.SystemRole)
+		if role != "member" && role != "admin" {
+			return User{}, ErrInvalid
+		}
+	}
+	disabled := current.Disabled
+	if update.Disabled != nil {
+		disabled = *update.Disabled
+	}
+	if userID == actor.User.ID && disabled {
+		return User{}, ErrForbidden
+	}
+	if current.SystemRole == "admin" && (role != "admin" || disabled) {
+		if err := ensureAnotherActiveSystemAdmin(ctx, tx, userID); err != nil {
+			return User{}, err
+		}
+	}
+
+	var user User
+	if update.Disabled != nil {
+		if disabled {
+			err = tx.QueryRow(ctx, `
+				UPDATE users
+				SET display_name = $2, system_role = $3, disabled_at = now(), updated_at = now()
+				WHERE id = $1
+				RETURNING id, username, display_name, system_role, disabled_at IS NOT NULL`,
+				userID, displayName, role,
+			).Scan(&user.ID, &user.Username, &user.DisplayName, &user.SystemRole, &user.Disabled)
+		} else {
+			err = tx.QueryRow(ctx, `
+				UPDATE users
+				SET display_name = $2, system_role = $3, disabled_at = NULL, updated_at = now()
+				WHERE id = $1
+				RETURNING id, username, display_name, system_role, disabled_at IS NOT NULL`,
+				userID, displayName, role,
+			).Scan(&user.ID, &user.Username, &user.DisplayName, &user.SystemRole, &user.Disabled)
+		}
+	} else {
+		err = tx.QueryRow(ctx, `
+			UPDATE users
+			SET display_name = $2, system_role = $3, updated_at = now()
+			WHERE id = $1
+			RETURNING id, username, display_name, system_role, disabled_at IS NOT NULL`,
+			userID, displayName, role,
+		).Scan(&user.ID, &user.Username, &user.DisplayName, &user.SystemRole, &user.Disabled)
+	}
+	if err != nil {
+		return User{}, mapStoreError("update user", err)
+	}
+	if err := tx.Commit(ctx); err != nil {
+		return User{}, fmt.Errorf("commit update user: %w", err)
+	}
+	return user, nil
+}
+
+func (s *Store) UpdateTeam(ctx context.Context, actor Principal, teamID, name string) (Team, error) {
+	name = strings.TrimSpace(name)
+	tx, err := s.pool.Begin(ctx)
+	if err != nil {
+		return Team{}, fmt.Errorf("begin update team: %w", err)
+	}
+	defer tx.Rollback(ctx)
+	if err := authorizeSystemAdminForUpdate(ctx, tx, actor.User.ID); err != nil {
+		return Team{}, err
+	}
+
+	var team Team
+	err = tx.QueryRow(ctx, `
+		UPDATE teams
+		SET name = $2
+		WHERE id = $1
+		RETURNING id, name`,
+		teamID, name,
+	).Scan(&team.ID, &team.Name)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return Team{}, ErrNotFound
+	}
+	if err != nil {
+		return Team{}, mapStoreError("update team", err)
+	}
+	if err := tx.Commit(ctx); err != nil {
+		return Team{}, fmt.Errorf("commit update team: %w", err)
+	}
+	var role string
+	if err := s.pool.QueryRow(ctx, `
+		SELECT COALESCE(role, '')
+		FROM team_members
+		WHERE team_id = $1 AND user_id = $2`, teamID, actor.User.ID,
+	).Scan(&role); err != nil && !errors.Is(err, pgx.ErrNoRows) {
+		return Team{}, fmt.Errorf("load updated team role: %w", err)
+	}
+	team.Role = role
+	return team, nil
+}
+
+func (s *Store) DeleteTeam(ctx context.Context, actor Principal, teamID string) error {
+	tx, err := s.pool.Begin(ctx)
+	if err != nil {
+		return fmt.Errorf("begin delete team: %w", err)
+	}
+	defer tx.Rollback(ctx)
+	if err := authorizeSystemAdminForUpdate(ctx, tx, actor.User.ID); err != nil {
+		return err
+	}
+	result, err := tx.Exec(ctx, "DELETE FROM teams WHERE id = $1", teamID)
+	if err != nil {
+		return mapStoreError("delete team", err)
+	}
+	if result.RowsAffected() == 0 {
+		return ErrNotFound
+	}
+	if err := tx.Commit(ctx); err != nil {
+		return fmt.Errorf("commit delete team: %w", err)
+	}
+	return nil
+}
+
 func (s *Store) AddTeamMember(ctx context.Context, actor Principal, teamID, userID, role string) error {
 	result, err := s.pool.Exec(ctx, `
 		WITH authorized AS (
@@ -218,12 +386,225 @@ func (s *Store) AddTeamMember(ctx context.Context, actor Principal, teamID, user
 	return nil
 }
 
+func (s *Store) SetTeamMemberRole(ctx context.Context, actor Principal, teamID, userID, role string) error {
+	role = strings.TrimSpace(role)
+	if !validTeamRole(role) {
+		return ErrInvalid
+	}
+	tx, err := s.pool.Begin(ctx)
+	if err != nil {
+		return fmt.Errorf("begin set team member role: %w", err)
+	}
+	defer tx.Rollback(ctx)
+	if err := authorizeTeamAdminForUpdate(ctx, tx, actor.User.ID, teamID); err != nil {
+		return err
+	}
+	currentRole, err := lockTeamMember(ctx, tx, teamID, userID)
+	if err != nil {
+		return err
+	}
+	if currentRole == "admin" && role != "admin" {
+		if err := ensureAnotherTeamAdmin(ctx, tx, teamID, userID); err != nil {
+			return err
+		}
+	}
+	if _, err := tx.Exec(ctx, "UPDATE team_members SET role = $3 WHERE team_id = $1 AND user_id = $2", teamID, userID, role); err != nil {
+		return mapStoreError("set team member role", err)
+	}
+	if err := tx.Commit(ctx); err != nil {
+		return fmt.Errorf("commit set team member role: %w", err)
+	}
+	return nil
+}
+
+func (s *Store) RemoveTeamMember(ctx context.Context, actor Principal, teamID, userID string) error {
+	tx, err := s.pool.Begin(ctx)
+	if err != nil {
+		return fmt.Errorf("begin remove team member: %w", err)
+	}
+	defer tx.Rollback(ctx)
+	if err := authorizeTeamAdminForUpdate(ctx, tx, actor.User.ID, teamID); err != nil {
+		return err
+	}
+	currentRole, err := lockTeamMember(ctx, tx, teamID, userID)
+	if err != nil {
+		return err
+	}
+	if currentRole == "admin" {
+		if err := ensureAnotherTeamAdmin(ctx, tx, teamID, userID); err != nil {
+			return err
+		}
+	}
+	if _, err := tx.Exec(ctx, "DELETE FROM team_members WHERE team_id = $1 AND user_id = $2", teamID, userID); err != nil {
+		return mapStoreError("remove team member", err)
+	}
+	if err := tx.Commit(ctx); err != nil {
+		return fmt.Errorf("commit remove team member: %w", err)
+	}
+	return nil
+}
+
+func (s *Store) SetUserTeamMemberships(ctx context.Context, actor Principal, userID string, assignments []TeamAssignment) error {
+	normalized := make([]TeamAssignment, 0, len(assignments))
+	seen := make(map[string]struct{}, len(assignments))
+	for _, assignment := range assignments {
+		teamID := strings.TrimSpace(assignment.TeamID)
+		role := strings.TrimSpace(assignment.Role)
+		if teamID == "" || !validTeamRole(role) {
+			return ErrInvalid
+		}
+		if _, exists := seen[teamID]; exists {
+			return ErrInvalid
+		}
+		seen[teamID] = struct{}{}
+		normalized = append(normalized, TeamAssignment{TeamID: teamID, Role: role})
+	}
+
+	tx, err := s.pool.Begin(ctx)
+	if err != nil {
+		return fmt.Errorf("begin set user team memberships: %w", err)
+	}
+	defer tx.Rollback(ctx)
+	if err := authorizeSystemAdminForUpdate(ctx, tx, actor.User.ID); err != nil {
+		return err
+	}
+	var targetExists bool
+	if err := tx.QueryRow(ctx, "SELECT EXISTS (SELECT 1 FROM users WHERE id = $1 FOR UPDATE)", userID).Scan(&targetExists); err != nil {
+		return fmt.Errorf("lock target user: %w", err)
+	}
+	if !targetExists {
+		return ErrNotFound
+	}
+
+	rows, err := tx.Query(ctx, "SELECT team_id, role FROM team_members WHERE user_id = $1 FOR UPDATE", userID)
+	if err != nil {
+		return fmt.Errorf("load user memberships: %w", err)
+	}
+	current := make(map[string]string)
+	for rows.Next() {
+		var teamID, role string
+		if err := rows.Scan(&teamID, &role); err != nil {
+			rows.Close()
+			return fmt.Errorf("scan user membership: %w", err)
+		}
+		current[teamID] = role
+	}
+	if err := rows.Err(); err != nil {
+		rows.Close()
+		return fmt.Errorf("load user memberships: %w", err)
+	}
+	rows.Close()
+
+	desired := make(map[string]string, len(normalized))
+	for _, assignment := range normalized {
+		desired[assignment.TeamID] = assignment.Role
+	}
+	for teamID, currentRole := range current {
+		if currentRole == "admin" && desired[teamID] != "admin" {
+			if err := ensureAnotherTeamAdmin(ctx, tx, teamID, userID); err != nil {
+				return err
+			}
+		}
+	}
+	for teamID := range current {
+		if _, keep := desired[teamID]; !keep {
+			if _, err := tx.Exec(ctx, "DELETE FROM team_members WHERE team_id = $1 AND user_id = $2", teamID, userID); err != nil {
+				return mapStoreError("delete user membership", err)
+			}
+		}
+	}
+	for _, assignment := range normalized {
+		if _, err := tx.Exec(ctx, `
+			INSERT INTO team_members (team_id, user_id, role)
+			VALUES ($1, $2, $3)
+			ON CONFLICT (team_id, user_id) DO UPDATE SET role = EXCLUDED.role`,
+			assignment.TeamID, userID, assignment.Role,
+		); err != nil {
+			return mapStoreError("upsert user membership", err)
+		}
+	}
+	if err := tx.Commit(ctx); err != nil {
+		return fmt.Errorf("commit set user team memberships: %w", err)
+	}
+	return nil
+}
+
+func (s *Store) ListTeamMembers(ctx context.Context, actor Principal, teamID string) ([]TeamMember, error) {
+	teamID = strings.TrimSpace(teamID)
+	if actor.User.Disabled || teamID == "" {
+		return nil, ErrForbidden
+	}
+	var authorized bool
+	err := s.pool.QueryRow(ctx, `
+		SELECT EXISTS (
+			SELECT 1
+			FROM users
+			WHERE users.id = $1
+			  AND users.disabled_at IS NULL
+			  AND users.system_role = 'admin'
+		) OR EXISTS (
+			SELECT 1
+			FROM users
+			JOIN team_members ON team_members.user_id = users.id
+			WHERE users.id = $1
+			  AND users.disabled_at IS NULL
+			  AND team_members.team_id = $2
+		)`, actor.User.ID, teamID).Scan(&authorized)
+	if err != nil {
+		return nil, fmt.Errorf("authorize list team members: %w", err)
+	}
+	if !authorized {
+		return nil, ErrForbidden
+	}
+
+	rows, err := s.pool.Query(ctx, `
+		SELECT users.id, users.username, users.display_name, users.system_role, users.disabled_at IS NOT NULL, team_members.role
+		FROM team_members
+		JOIN users ON users.id = team_members.user_id
+		WHERE team_members.team_id = $1
+		ORDER BY lower(users.username)`, teamID)
+	if err != nil {
+		return nil, fmt.Errorf("list team members: %w", err)
+	}
+	defer rows.Close()
+	var members []TeamMember
+	for rows.Next() {
+		var member TeamMember
+		if err := rows.Scan(
+			&member.User.ID,
+			&member.User.Username,
+			&member.User.DisplayName,
+			&member.User.SystemRole,
+			&member.User.Disabled,
+			&member.Role,
+		); err != nil {
+			return nil, fmt.Errorf("scan team member: %w", err)
+		}
+		members = append(members, member)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("list team members: %w", err)
+	}
+	return members, nil
+}
+
 func (s *Store) ListUsers(ctx context.Context, actor Principal) ([]User, error) {
 	if actor.User.Disabled {
 		return nil, ErrForbidden
 	}
 	if actor.User.SystemRole != "admin" {
-		return []User{actor.User}, nil
+		var hasAdminTeam bool
+		if err := s.pool.QueryRow(ctx, `
+			SELECT EXISTS (
+				SELECT 1
+				FROM team_members
+				WHERE user_id = $1 AND role = 'admin'
+			)`, actor.User.ID).Scan(&hasAdminTeam); err != nil {
+			return nil, fmt.Errorf("check team admin user listing: %w", err)
+		}
+		if !hasAdminTeam {
+			return []User{actor.User}, nil
+		}
 	}
 	rows, err := s.pool.Query(ctx, `
 		SELECT id, username, display_name, system_role, disabled_at IS NOT NULL
@@ -252,10 +633,19 @@ func (s *Store) ListTeams(ctx context.Context, actor Principal) ([]Team, error) 
 		return nil, ErrForbidden
 	}
 	rows, err := s.pool.Query(ctx, `
-		SELECT teams.id, teams.name, team_members.role
+		SELECT teams.id, teams.name, COALESCE(team_members.role, '') AS role
 		FROM teams
-		JOIN team_members ON team_members.team_id = teams.id
-		WHERE team_members.user_id = $1
+		LEFT JOIN team_members ON team_members.team_id = teams.id AND team_members.user_id = $1
+		WHERE (
+			team_members.user_id = $1
+			OR EXISTS (
+				SELECT 1
+				FROM users
+				WHERE users.id = $1
+				  AND users.disabled_at IS NULL
+				  AND users.system_role = 'admin'
+			)
+		)
 		ORDER BY teams.name`, actor.User.ID)
 	if err != nil {
 		return nil, fmt.Errorf("list teams: %w", err)
@@ -333,6 +723,104 @@ func authorizeSystemAdminForUpdate(ctx context.Context, tx pgx.Tx, userID string
 		return ErrForbidden
 	}
 	return nil
+}
+
+func authorizeTeamAdminForUpdate(ctx context.Context, tx pgx.Tx, userID, teamID string) error {
+	var role string
+	var disabled bool
+	err := tx.QueryRow(ctx, `
+		SELECT system_role, disabled_at IS NOT NULL
+		FROM users
+		WHERE id = $1
+		FOR UPDATE`, userID).Scan(&role, &disabled)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return ErrForbidden
+	}
+	if err != nil {
+		return fmt.Errorf("authorize team admin user: %w", err)
+	}
+	if disabled {
+		return ErrForbidden
+	}
+	if role == "admin" {
+		return nil
+	}
+
+	var teamRole string
+	err = tx.QueryRow(ctx, `
+		SELECT role
+		FROM team_members
+		WHERE team_id = $1 AND user_id = $2
+		FOR UPDATE`, teamID, userID).Scan(&teamRole)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return ErrForbidden
+	}
+	if err != nil {
+		return fmt.Errorf("authorize team admin membership: %w", err)
+	}
+	if teamRole != "admin" {
+		return ErrForbidden
+	}
+	return nil
+}
+
+func lockTeamMember(ctx context.Context, tx pgx.Tx, teamID, userID string) (string, error) {
+	var role string
+	err := tx.QueryRow(ctx, `
+		SELECT role
+		FROM team_members
+		WHERE team_id = $1 AND user_id = $2
+		FOR UPDATE`, teamID, userID).Scan(&role)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return "", ErrNotFound
+	}
+	if err != nil {
+		return "", fmt.Errorf("lock team member: %w", err)
+	}
+	return role, nil
+}
+
+func ensureAnotherTeamAdmin(ctx context.Context, tx pgx.Tx, teamID, excludedUserID string) error {
+	rows, err := tx.Query(ctx, "SELECT user_id FROM team_members WHERE team_id = $1 FOR UPDATE", teamID)
+	if err != nil {
+		return fmt.Errorf("lock team admins: %w", err)
+	}
+	rows.Close()
+	var exists bool
+	if err := tx.QueryRow(ctx, `
+		SELECT EXISTS (
+			SELECT 1
+			FROM team_members
+			WHERE team_id = $1 AND user_id <> $2 AND role = 'admin'
+		)`, teamID, excludedUserID).Scan(&exists); err != nil {
+		return fmt.Errorf("check another team admin: %w", err)
+	}
+	if !exists {
+		return ErrLastTeamAdmin
+	}
+	return nil
+}
+
+func ensureAnotherActiveSystemAdmin(ctx context.Context, tx pgx.Tx, excludedUserID string) error {
+	var exists bool
+	if err := tx.QueryRow(ctx, `
+		SELECT EXISTS (
+			SELECT 1
+			FROM users
+			WHERE id <> $1
+			  AND system_role = 'admin'
+			  AND disabled_at IS NULL
+		)`, excludedUserID).Scan(&exists); err != nil {
+		return fmt.Errorf("check another system admin: %w", err)
+	}
+	if !exists {
+		return ErrLastSystemAdmin
+	}
+	return nil
+}
+
+func validTeamRole(role string) bool {
+	return role == "member" || role == "admin"
 }
 
 func mapStoreError(operation string, err error) error {

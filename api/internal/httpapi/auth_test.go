@@ -14,14 +14,25 @@ import (
 )
 
 type fakeIdentity struct {
-	user            identity.User
-	principal       identity.Principal
-	authErr         error
-	createdUser     identity.User
-	createdTeam     identity.Team
-	addedTeamID     string
-	addedTeamUserID string
-	addedTeamRole   string
+	user             identity.User
+	principal        identity.Principal
+	authErr          error
+	createdUser      identity.User
+	updatedUser      identity.User
+	userTeamsUserID  string
+	userTeams        []identity.TeamAssignment
+	createdTeam      identity.Team
+	updatedTeam      identity.Team
+	deletedTeamID    string
+	addedTeamID      string
+	addedTeamUserID  string
+	addedTeamRole    string
+	memberRoleTeamID string
+	memberRoleUserID string
+	memberRole       string
+	removedTeamID    string
+	removedUserID    string
+	listedTeamID     string
 }
 
 func (f *fakeIdentity) Authenticate(context.Context, string, string) (identity.User, error) {
@@ -48,9 +59,42 @@ func (f *fakeIdentity) CreateUser(_ context.Context, _ identity.Principal, usern
 	return f.createdUser, nil
 }
 
+func (f *fakeIdentity) UpdateUser(_ context.Context, _ identity.Principal, userID string, update identity.UserUpdate) (identity.User, error) {
+	displayName := "updated"
+	if update.DisplayName != nil {
+		displayName = *update.DisplayName
+	}
+	role := "member"
+	if update.SystemRole != nil {
+		role = *update.SystemRole
+	}
+	disabled := false
+	if update.Disabled != nil {
+		disabled = *update.Disabled
+	}
+	f.updatedUser = identity.User{ID: userID, Username: "updated", DisplayName: displayName, SystemRole: role, Disabled: disabled}
+	return f.updatedUser, nil
+}
+
+func (f *fakeIdentity) SetUserTeamMemberships(_ context.Context, _ identity.Principal, userID string, teams []identity.TeamAssignment) error {
+	f.userTeamsUserID = userID
+	f.userTeams = append([]identity.TeamAssignment(nil), teams...)
+	return nil
+}
+
 func (f *fakeIdentity) CreateTeam(_ context.Context, _ identity.Principal, name string) (identity.Team, error) {
 	f.createdTeam = identity.Team{ID: "team_created", Name: name, Role: "admin"}
 	return f.createdTeam, nil
+}
+
+func (f *fakeIdentity) UpdateTeam(_ context.Context, _ identity.Principal, teamID, name string) (identity.Team, error) {
+	f.updatedTeam = identity.Team{ID: teamID, Name: name, Role: "admin"}
+	return f.updatedTeam, nil
+}
+
+func (f *fakeIdentity) DeleteTeam(_ context.Context, _ identity.Principal, teamID string) error {
+	f.deletedTeamID = teamID
+	return nil
 }
 
 func (f *fakeIdentity) AddTeamMember(_ context.Context, _ identity.Principal, teamID, userID, role string) error {
@@ -58,6 +102,27 @@ func (f *fakeIdentity) AddTeamMember(_ context.Context, _ identity.Principal, te
 	f.addedTeamUserID = userID
 	f.addedTeamRole = role
 	return nil
+}
+
+func (f *fakeIdentity) SetTeamMemberRole(_ context.Context, _ identity.Principal, teamID, userID, role string) error {
+	f.memberRoleTeamID = teamID
+	f.memberRoleUserID = userID
+	f.memberRole = role
+	return nil
+}
+
+func (f *fakeIdentity) RemoveTeamMember(_ context.Context, _ identity.Principal, teamID, userID string) error {
+	f.removedTeamID = teamID
+	f.removedUserID = userID
+	return nil
+}
+
+func (f *fakeIdentity) ListTeamMembers(_ context.Context, _ identity.Principal, teamID string) ([]identity.TeamMember, error) {
+	f.listedTeamID = teamID
+	return []identity.TeamMember{{
+		User: identity.User{ID: "usr_alice", Username: "alice", DisplayName: "Alice", SystemRole: "admin"},
+		Role: "admin",
+	}}, nil
 }
 
 func newAuthTestRouter(t *testing.T, secureCookie bool) (http.Handler, *identity.Sessions, *fakeIdentity) {
