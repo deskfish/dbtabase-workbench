@@ -57,14 +57,16 @@ export function SettingsIndexRedirect() {
 
 export function SettingsUsersGuard() {
   const {session} = useAuth()
+  const ctx = useOutletContext<SettingsOutletContext>()
   if (session?.user.systemRole !== 'admin') return <Navigate to="/settings/profile" replace />
-  return <Outlet />
+  return <Outlet context={ctx} />
 }
 
 export function SettingsTeamsGuard() {
   const {session} = useAuth()
+  const ctx = useOutletContext<SettingsOutletContext>()
   const isSystemAdmin = session?.user.systemRole === 'admin'
   const isTeamAdmin = (session?.teams ?? []).some((team) => team.role === 'admin')
   if (!isSystemAdmin && !isTeamAdmin) return <Navigate to="/settings/profile" replace />
-  return <Outlet />
+  return <Outlet context={ctx} />
 }
