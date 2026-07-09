@@ -1,5 +1,5 @@
 import {useState} from 'react'
-import {NavLink, Navigate, Outlet} from 'react-router-dom'
+import {NavLink, Navigate, Outlet, useOutletContext} from 'react-router-dom'
 import {useAuth} from '../auth/AuthProvider'
 import {settingsClient} from './client'
 import {manageableTeams} from './shared'
