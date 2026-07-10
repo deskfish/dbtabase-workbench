@@ -30,6 +30,7 @@ export type UpdateUserInput = {
   displayName: string
   systemRole: string
   disabled?: boolean
+  password?: string
 }
 
 export type AddMemberInput = {
@@ -46,6 +47,7 @@ export type SettingsClient = {
   listUsers(): Promise<UserSummary[]>
   createUser(input: CreateUserInput): Promise<UserSummary>
   updateUser(userId: string, input: UpdateUserInput): Promise<UserSummary>
+  deleteUser(userId: string): Promise<void>
   setUserTeams(userId: string, teams: UserTeamAssignment[]): Promise<void>
   listTeams(): Promise<TeamSummary[]>
   createTeam(name: string): Promise<TeamSummary>
@@ -80,11 +82,15 @@ export const settingsClient: SettingsClient = {
       role: input.systemRole,
     }
     if (input.disabled !== undefined) body.disabled = input.disabled
+    if (input.password) body.password = input.password
     const result = await json<{user: UserSummary}>(`/api/users/${encodeURIComponent(userId)}`, {
       method: 'PATCH',
       body: JSON.stringify(body),
     })
     return result.user
+  },
+  async deleteUser(userId) {
+    await json<void>(`/api/users/${encodeURIComponent(userId)}`, {method: 'DELETE'})
   },
   async setUserTeams(userId, teams) {
     await json<void>(`/api/users/${encodeURIComponent(userId)}/teams`, {

@@ -43,6 +43,7 @@ function fakeClient(overrides: Partial<SettingsClient> = {}): SettingsClient {
     listUsers: vi.fn(async () => users),
     createUser: vi.fn(async (input) => ({id: 'usr_new', username: input.username, displayName: input.displayName, systemRole: input.systemRole, disabled: false})),
     updateUser: vi.fn(async (userId, input) => ({id: userId, username: 'updated', displayName: input.displayName, systemRole: input.systemRole, disabled: Boolean(input.disabled)})),
+    deleteUser: vi.fn(async () => undefined),
     setUserTeams: vi.fn(async () => undefined),
     listTeams: vi.fn(async () => teams),
     createTeam: vi.fn(async (name) => ({id: 'team_new', name, role: 'admin'})),
@@ -132,6 +133,7 @@ it('lets system admins create users in a modal without rendering passwords back'
     isSystemAdmin: true,
   })
 
+  expect(await screen.findByRole('table', {name: '用户列表'})).toBeInTheDocument()
   await user.click(await screen.findByRole('button', {name: '新建用户'}))
   const dialog = within(screen.getByRole('dialog', {name: '新建用户'}))
   await user.type(dialog.getByLabelText('用户名'), 'bob')
@@ -148,7 +150,7 @@ it('lets system admins create users in a modal without rendering passwords back'
   expect(screen.queryByDisplayValue('super-secret-password')).not.toBeInTheDocument()
 })
 
-it('shows add-member controls only for teams the user administers', async () => {
+it('shows manage-members only for teams the user administers', async () => {
   const user = userEvent.setup()
   const client = fakeClient()
   renderHarness('teams', session('member', [
@@ -163,19 +165,19 @@ it('shows add-member controls only for teams the user administers', async () => 
       {id: 'team_one', name: 'Team One', role: 'admin'},
       {id: 'team_two', name: 'Team Two', role: 'member'},
     ],
+    teamMembers: {
+      team_one: [{user: {id: 'usr_alice', username: 'alice', displayName: 'Alice', systemRole: 'member', disabled: false}, role: 'admin'}],
+    },
     canManageTeams: true,
   })
 
-  expect(await screen.findByRole('form', {name: '添加成员 - Team One'})).toBeVisible()
-  expect(screen.queryByRole('form', {name: '添加成员 - Team Two'})).not.toBeInTheDocument()
-  await user.click(screen.getByRole('combobox', {name: 'Team One 选择成员'}))
-  await user.click(screen.getByRole('option', {name: 'Bob'}))
-  await user.click(screen.getByRole('button', {name: '添加成员'}))
-
-  await waitFor(() => expect(client.addMember).toHaveBeenCalledWith('team_one', {userId: 'usr_bob', role: 'member'}))
+  expect(await screen.findByRole('table', {name: '团队列表'})).toBeInTheDocument()
+  expect(await screen.findByRole('button', {name: '维护成员'})).toBeVisible()
+  expect(screen.getAllByRole('button', {name: '维护成员'})).toHaveLength(1)
+  expect(screen.queryByRole('button', {name: '添加成员'})).not.toBeInTheDocument()
 })
 
-it('refreshes members after adding a member', async () => {
+it('saves team members from the manage dialog', async () => {
   const user = userEvent.setup()
   const refreshMembers = vi.fn(async () => undefined)
   const client = fakeClient()
@@ -193,16 +195,52 @@ it('refreshes members after adding a member', async () => {
     refreshMembers,
   })
 
-  const memberList = await screen.findByRole('list', {name: 'Team One 成员'})
-  expect(within(memberList).getByText('Alice')).toBeVisible()
-  await user.click(screen.getByRole('combobox', {name: 'Team One 选择成员'}))
-  await user.click(screen.getByRole('option', {name: 'Bob'}))
-  await user.click(screen.getByRole('button', {name: '添加成员'}))
+  await user.click(await screen.findByRole('button', {name: '维护成员'}))
+  expect(await screen.findByRole('dialog', {name: /维护成员 · Team One/})).toBeVisible()
+  await user.click(screen.getByRole('checkbox', {name: '加入 Bob'}))
+  await user.click(screen.getByRole('button', {name: '保存'}))
 
-  await waitFor(() => expect(refreshMembers).toHaveBeenCalledWith('team_one'))
+  await waitFor(() => expect(client.addMember).toHaveBeenCalledWith('team_one', {userId: 'usr_bob', role: 'member'}))
+  expect(refreshMembers).toHaveBeenCalledWith('team_one')
 })
 
-it('lets system admins edit a user without team assignment controls', async () => {
+it('lets system admins edit a user and update team memberships', async () => {
+  const user = userEvent.setup()
+  const refreshAllMembers = vi.fn(async () => undefined)
+  const client = fakeClient()
+  renderHarness('users', session('admin'), client, {
+    users: [
+      {id: 'usr_alice', username: 'alice', displayName: 'Alice', systemRole: 'admin', disabled: false},
+      {id: 'usr_bob', username: 'bob', displayName: 'Bob', systemRole: 'member', disabled: false},
+    ],
+    teams: [
+      {id: 'team_one', name: 'Team One', role: 'admin'},
+      {id: 'team_two', name: 'Team Two', role: 'admin'},
+    ],
+    teamMembers: {
+      team_one: [{user: {id: 'usr_bob', username: 'bob', displayName: 'Bob', systemRole: 'member', disabled: false}, role: 'member'}],
+      team_two: [],
+    },
+    isSystemAdmin: true,
+    refreshAllMembers,
+  })
+
+  const bobRow = screen.getByText('bob').closest('tr')!
+  await user.click(within(bobRow).getByRole('button', {name: '编辑'}))
+  expect(await screen.findByRole('dialog', {name: 'Bob'})).toBeVisible()
+  expect(screen.getByText('团队归属')).toBeVisible()
+
+  const nameInput = screen.getByLabelText('显示名称')
+  await user.clear(nameInput)
+  await user.type(nameInput, 'Robert')
+  await user.click(screen.getByRole('button', {name: '保存'}))
+
+  await waitFor(() => expect(client.updateUser).toHaveBeenCalledWith('usr_bob', {displayName: 'Robert', systemRole: 'member', disabled: false}))
+  await waitFor(() => expect(client.setUserTeams).toHaveBeenCalledWith('usr_bob', [{teamId: 'team_one', role: 'member'}]))
+  expect(refreshAllMembers).toHaveBeenCalled()
+})
+
+it('lets system admins reset a user password from the edit dialog', async () => {
   const user = userEvent.setup()
   const client = fakeClient()
   renderHarness('users', session('admin'), client, {
@@ -211,22 +249,40 @@ it('lets system admins edit a user without team assignment controls', async () =
       {id: 'usr_bob', username: 'bob', displayName: 'Bob', systemRole: 'member', disabled: false},
     ],
     teams: [{id: 'team_one', name: 'Team One', role: 'admin'}],
-    teamMembers: {
-      team_one: [{user: {id: 'usr_bob', username: 'bob', displayName: 'Bob', systemRole: 'member', disabled: false}, role: 'member'}],
-    },
+    teamMembers: {team_one: []},
     isSystemAdmin: true,
   })
 
   const bobRow = screen.getByText('bob').closest('tr')!
   await user.click(within(bobRow).getByRole('button', {name: '编辑'}))
-  const nameInput = screen.getByLabelText('显示名称')
-  await user.clear(nameInput)
-  await user.type(nameInput, 'Robert')
+  await user.type(screen.getByLabelText('新密码'), 'new-password-123')
+  await user.type(screen.getByLabelText('确认新密码'), 'new-password-123')
   await user.click(screen.getByRole('button', {name: '保存'}))
 
-  await waitFor(() => expect(client.updateUser).toHaveBeenCalledWith('usr_bob', {displayName: 'Robert', systemRole: 'member', disabled: false}))
-  expect(client.setUserTeams).not.toHaveBeenCalled()
-  expect(screen.queryByLabelText(/选择团队/)).not.toBeInTheDocument()
+  await waitFor(() => expect(client.updateUser).toHaveBeenCalledWith('usr_bob', {
+    displayName: 'Bob',
+    systemRole: 'member',
+    disabled: false,
+    password: 'new-password-123',
+  }))
+})
+
+it('asks before deleting a user', async () => {
+  const user = userEvent.setup()
+  const client = fakeClient()
+  renderHarness('users', session('admin'), client, {
+    users: [
+      {id: 'usr_alice', username: 'alice', displayName: 'Alice', systemRole: 'admin', disabled: false},
+      {id: 'usr_bob', username: 'bob', displayName: 'Bob', systemRole: 'member', disabled: false},
+    ],
+    isSystemAdmin: true,
+  })
+
+  const bobRow = screen.getByText('bob').closest('tr')!
+  await user.click(within(bobRow).getByRole('button', {name: '删除'}))
+  expect(await screen.findByRole('dialog', {name: /删除用户 Bob/})).toBeVisible()
+  await user.click(screen.getByRole('button', {name: '删除用户'}))
+  await waitFor(() => expect(client.deleteUser).toHaveBeenCalledWith('usr_bob'))
 })
 
 it('asks before deleting a team', async () => {

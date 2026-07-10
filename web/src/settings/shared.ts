@@ -67,7 +67,13 @@ export function teamsForUser(
 
 export function validateCreateUser(input: {username: string; displayName: string; password: string}): string | null {
   if (!input.username.trim()) return '请输入用户名'
-  if (!input.password) return '请输入初始密码'
-  if (input.password.length < 8) return '初始密码至少 8 位'
+  const passwordError = validatePassword(input.password)
+  if (passwordError) return passwordError
+  return null
+}
+
+export function validatePassword(password: string): string | null {
+  if (!password) return '请输入密码'
+  if (password.length < 8) return '密码至少 8 位'
   return null
 }

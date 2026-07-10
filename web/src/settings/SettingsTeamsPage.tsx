@@ -1,16 +1,19 @@
-import {FormEvent, useEffect, useState} from 'react'
+import {useEffect, useState} from 'react'
 import {useOutletContext} from 'react-router-dom'
 import {ConfirmDialog} from '../features/ui/ConfirmDialog'
-import {SelectControl} from '../features/ui/SelectControl'
+import {DataGrid} from '../features/ui/DataGrid'
+import {EmptyState} from '../features/ui/EmptyState'
+import {FormDialog} from '../features/ui/FormDialog'
+import {StatusBadge} from '../features/ui/StatusBadge'
 import {TextField} from '../features/ui/TextField'
+import {CreateTeamDialog} from './CreateTeamDialog'
 import {settingsErrorMessage} from './errors'
-import {displayUser, manageableTeams, teamRoleOptions} from './shared'
-import type {AddMemberInput, SettingsClient, TeamMemberSummary, TeamSummary} from './client'
+import {manageableTeams} from './shared'
+import {TeamMembersDialog, type TeamMemberDraft} from './TeamMembersDialog'
+import type {SettingsClient, TeamSummary} from './client'
 import type {SettingsOutletContext} from './types'
 
-type PendingAction =
-  | {type: 'delete-team'; team: TeamSummary}
-  | {type: 'remove-member'; team: TeamSummary; member: TeamMemberSummary}
+type PendingAction = {type: 'delete-team'; team: TeamSummary}
 
 export function SettingsTeamsPage({client: clientOverride}: {client?: SettingsClient}) {
   const ctx = useOutletContext<SettingsOutletContext>()
@@ -20,14 +23,13 @@ export function SettingsTeamsPage({client: clientOverride}: {client?: SettingsCl
   } = ctx
 
   const [creatingTeam, setCreatingTeam] = useState(false)
-  const [teamName, setTeamName] = useState('')
   const [showCreateTeam, setShowCreateTeam] = useState(false)
   const [editingTeamId, setEditingTeamId] = useState('')
   const [teamDrafts, setTeamDrafts] = useState<Record<string, string>>({})
   const [teamPending, setTeamPending] = useState<Record<string, boolean>>({})
-  const [memberForms, setMemberForms] = useState<Record<string, AddMemberInput>>({})
-  const [memberPending, setMemberPending] = useState<Record<string, boolean>>({})
   const [pendingAction, setPendingAction] = useState<PendingAction | null>(null)
+  const [managingTeam, setManagingTeam] = useState<TeamSummary | null>(null)
+  const [savingMembers, setSavingMembers] = useState(false)
 
   const managedTeams = manageableTeams(teams, isSystemAdmin)
 
@@ -38,21 +40,15 @@ export function SettingsTeamsPage({client: clientOverride}: {client?: SettingsCl
     target?.scrollIntoView({behavior: 'smooth', block: 'start'})
   }, [teams])
 
-  async function submitTeam(event: FormEvent) {
-    event.preventDefault()
-    if (!teamName.trim()) {
-      setError('请输入团队名称')
-      return
-    }
+  async function submitTeam(name: string) {
     setCreatingTeam(true)
     setError('')
     setSuccess('')
     try {
-      const created = await client.createTeam(teamName.trim())
+      const created = await client.createTeam(name)
       const members = await client.listTeamMembers(created.id).catch(() => [])
       setTeams((current) => [...current.filter((team) => team.id !== created.id), created].sort((a, b) => a.name.localeCompare(b.name)))
       ctx.setTeamMembers((current) => ({...current, [created.id]: members}))
-      setTeamName('')
       setShowCreateTeam(false)
       setSuccess(`团队 ${created.name} 已创建`)
     } catch (err) {
@@ -104,215 +100,100 @@ export function SettingsTeamsPage({client: clientOverride}: {client?: SettingsCl
     }
   }
 
-  function addableUserOptions(team: TeamSummary) {
-    const existing = new Set((teamMembers[team.id] ?? []).map((member) => member.user.id))
-    return users
-      .filter((user) => !user.disabled && !existing.has(user.id))
-      .map((user) => ({value: user.id, label: displayUser(user)}))
-  }
+  async function saveTeamMembers(team: TeamSummary, draft: TeamMemberDraft[]) {
+    const current = teamMembers[team.id] ?? []
+    const currentMap = new Map(current.map((member) => [member.user.id, member.role]))
+    const nextMap = new Map(draft.filter((item) => item.joined).map((item) => [item.userId, item.role]))
 
-  function memberForm(team: TeamSummary): AddMemberInput {
-    const options = addableUserOptions(team)
-    const current = memberForms[team.id]
-    return {userId: current?.userId || options[0]?.value || '', role: current?.role || 'member'}
-  }
-
-  async function submitMember(team: TeamSummary, event: FormEvent) {
-    event.preventDefault()
-    const value = memberForm(team)
-    if (!value.userId) {
-      setError('没有可添加的用户')
-      return
-    }
-    setMemberPending((current) => ({...current, [team.id]: true}))
+    setSavingMembers(true)
     setError('')
     setSuccess('')
     try {
-      await client.addMember(team.id, value)
+      for (const [userId, role] of nextMap) {
+        if (!currentMap.has(userId)) {
+          await client.addMember(team.id, {userId, role})
+        } else if (currentMap.get(userId) !== role) {
+          await client.updateMemberRole(team.id, userId, role)
+        }
+      }
+      for (const userId of currentMap.keys()) {
+        if (!nextMap.has(userId)) {
+          await client.removeMember(team.id, userId)
+        }
+      }
       await refreshMembers(team.id)
-      setMemberForms((current) => ({...current, [team.id]: {userId: '', role: 'member'}}))
-      setSuccess(`已添加成员到 ${team.name}`)
+      setManagingTeam(null)
+      setSuccess(`已更新 ${team.name} 的成员`)
     } catch (err) {
       setError(settingsErrorMessage(err))
     } finally {
-      setMemberPending((current) => ({...current, [team.id]: false}))
+      setSavingMembers(false)
     }
   }
 
-  async function updateExistingMemberRole(team: TeamSummary, member: TeamMemberSummary, role: string) {
-    if (member.role === role) return
-    setError('')
-    setSuccess('')
-    try {
-      await client.updateMemberRole(team.id, member.user.id, role)
-      await refreshMembers(team.id)
-      setSuccess(`已更新 ${displayUser(member.user)} 在 ${team.name} 的角色`)
-    } catch (err) {
-      setError(settingsErrorMessage(err))
-    }
-  }
-
-  async function removeExistingMember(team: TeamSummary, member: TeamMemberSummary) {
-    setError('')
-    setSuccess('')
-    try {
-      await client.removeMember(team.id, member.user.id)
-      await refreshMembers(team.id)
-      setSuccess(`已从 ${team.name} 移除 ${displayUser(member.user)}`)
-    } catch (err) {
-      setError(settingsErrorMessage(err))
-    } finally {
-      setPendingAction(null)
-    }
-  }
-
-  function renderTeamCard(team: TeamSummary) {
+  function renderTeamRow(team: TeamSummary) {
     const members = teamMembers[team.id] ?? []
-    const options = addableUserOptions(team)
-    const form = memberForm(team)
-    const editingName = editingTeamId === team.id
     const canManageMembers = isSystemAdmin || team.role === 'admin'
 
     return (
-      <article key={team.id} id={`team-${team.id}`} className="team-card">
-        <header className="team-card-head">
-          {editingName ? (
-            <form
-              className="team-name-form"
-              onSubmit={(event) => { event.preventDefault(); void saveTeamName(team) }}
-            >
-              <TextField
-                label={`${team.name} 新名称`}
-                value={teamDrafts[team.id] ?? team.name}
-                onChange={(event) => setTeamDrafts((current) => ({...current, [team.id]: event.target.value}))}
-              />
-              <div className="settings-row-actions">
-                <button className="oc-button primary" type="submit" disabled={teamPending[team.id]}>{teamPending[team.id] ? '保存中…' : '保存名称'}</button>
-                <button className="oc-button" type="button" onClick={() => setEditingTeamId('')}>取消</button>
-              </div>
-            </form>
-          ) : (
-            <>
-              <div>
-                <h3>{team.name}</h3>
-                <p className="settings-muted">{members.length} 名成员 · 共享连接与日志会话</p>
-              </div>
-              <div className="settings-row-actions">
-                {canManageMembers && (
-                  <button
-                    className="oc-button"
-                    type="button"
-                    onClick={() => { setEditingTeamId(team.id); setTeamDrafts((current) => ({...current, [team.id]: team.name})) }}
-                  >
-                    重命名
-                  </button>
-                )}
-                {isSystemAdmin && (
-                  <button
-                    className="oc-button danger"
-                    type="button"
-                    disabled={teamPending[team.id]}
-                    onClick={() => setPendingAction({type: 'delete-team', team})}
-                  >
-                    删除
-                  </button>
-                )}
-              </div>
-            </>
-          )}
-        </header>
-
-        <div className="team-member-list" role="list" aria-label={`${team.name} 成员`}>
-          {members.length === 0 ? (
-            <p className="settings-muted">还没有成员。添加第一位成员后即可共享团队连接。</p>
-          ) : members.map((member) => (
-            <div key={member.user.id} className="team-member-row" role="listitem">
-              <div className="team-member-main">
-                <strong>{displayUser(member.user)}</strong>
-                <span>@{member.user.username}</span>
-              </div>
-              {canManageMembers ? (
-                <div className="team-member-actions">
-                  <SelectControl
-                    ariaLabel={`${displayUser(member.user)} 在 ${team.name} 的角色`}
-                    value={member.role}
-                    options={teamRoleOptions}
-                    onChange={(role) => { void updateExistingMemberRole(team, member, role) }}
-                  />
-                  <button
-                    className="oc-button danger"
-                    type="button"
-                    onClick={() => setPendingAction({type: 'remove-member', team, member})}
-                  >
-                    移除
-                  </button>
-                </div>
-              ) : (
-                <span className="badge">{member.role === 'admin' ? '团队管理员' : '成员'}</span>
-              )}
-            </div>
-          ))}
-        </div>
-
-        {canManageMembers && (
-          <footer className="team-add-member">
-            <form className="team-add-member-form" aria-label={`添加成员 - ${team.name}`} onSubmit={(event) => submitMember(team, event)}>
-              <SelectControl
-                ariaLabel={`${team.name} 选择成员`}
-                value={form.userId}
-                options={options}
-                disabled={options.length === 0}
-                onChange={(userId) => setMemberForms((current) => ({...current, [team.id]: {...memberForm(team), userId}}))}
-              />
-              <SelectControl
-                ariaLabel={`${team.name} 成员角色`}
-                value={form.role}
-                options={teamRoleOptions}
-                onChange={(role) => setMemberForms((current) => ({...current, [team.id]: {...memberForm(team), role}}))}
-              />
-              <button className="oc-button primary" type="submit" disabled={memberPending[team.id] || options.length === 0}>
-                {memberPending[team.id] ? '添加中…' : '添加成员'}
-              </button>
-            </form>
-            {options.length === 0 && members.length > 0 && (
-              <p className="settings-muted">所有可用用户都已在此团队中。</p>
-            )}
-          </footer>
-        )}
-      </article>
+      <tr key={team.id} id={`team-${team.id}`}>
+        <th scope="row">{team.name}</th>
+        <td>{members.length}</td>
+        <td><StatusBadge tone={team.role === 'admin' ? 'info' : 'neutral'}>{team.role === 'admin' ? '团队管理员' : '成员'}</StatusBadge></td>
+        <td>共享连接与日志会话</td>
+        <td><div className="settings-row-actions">
+          {canManageMembers && <button className="oc-button primary" type="button" onClick={() => setManagingTeam(team)}>维护成员</button>}
+          {canManageMembers && <button className="oc-button" type="button" onClick={() => { setEditingTeamId(team.id); setTeamDrafts((current) => ({...current, [team.id]: team.name})) }}>重命名</button>}
+          {isSystemAdmin && <button className="oc-button danger" type="button" disabled={teamPending[team.id]} onClick={() => setPendingAction({type: 'delete-team', team})}>删除</button>}
+        </div></td>
+      </tr>
     )
   }
 
+  const editingTeam = managedTeams.find((team) => team.id === editingTeamId) ?? null
+
   return (
     <>
-      <section className="ops-panel">
-        <div className="settings-section-head">
-          <div>
-            <h2>团队</h2>
-            <p className="settings-muted">团队决定谁能共享数据库连接与日志会话。成员关系只在这里维护。</p>
-          </div>
+      <section className="settings-management-workspace" aria-labelledby="teams-heading">
+        <header className="settings-workspace-head">
+          <div><strong id="teams-heading">团队</strong><span>成员关系、共享连接与日志资源</span></div>
           {isSystemAdmin && (
-            <button className="oc-button primary" type="button" onClick={() => setShowCreateTeam((current) => !current)}>
-              {showCreateTeam ? '取消' : '新建团队'}
+            <button className="oc-button primary" type="button" onClick={() => setShowCreateTeam(true)}>
+              新建团队
             </button>
           )}
-        </div>
-
-        {isSystemAdmin && showCreateTeam && (
-          <form className="settings-inline-create" onSubmit={submitTeam}>
-            <TextField label="团队名称" autoComplete="organization" value={teamName} onChange={(event) => setTeamName(event.target.value)} />
-            <button className="oc-button primary" type="submit" disabled={creatingTeam}>{creatingTeam ? '创建中…' : '创建团队'}</button>
-          </form>
-        )}
-
-        {managedTeams.length === 0 ? (
-          <p className="settings-empty">
-            {isSystemAdmin ? '还没有团队。创建第一个团队，开始共享连接与日志资源。' : '你暂无可管理的团队。'}
-          </p>
-        ) : (
-          <div className="team-card-grid">{managedTeams.map(renderTeamCard)}</div>
-        )}
+        </header>
+        <DataGrid label="团队列表" loading={false} empty={managedTeams.length === 0 ? <EmptyState title="暂无可管理团队" description={isSystemAdmin ? '新建团队后即可分配成员与共享资源。' : '你当前没有团队管理员权限。'} /> : undefined}>
+          <thead><tr><th>团队</th><th>成员</th><th>我的角色</th><th>资源</th><th aria-label="操作" /></tr></thead>
+          <tbody>{managedTeams.map(renderTeamRow)}</tbody>
+        </DataGrid>
       </section>
+
+      {editingTeam && (
+        <FormDialog title={`重命名 ${editingTeam.name}`} submitLabel="保存名称" submitting={Boolean(teamPending[editingTeam.id])} onCancel={() => setEditingTeamId('')} onSubmit={(event) => { event.preventDefault(); void saveTeamName(editingTeam) }}>
+          <TextField label="团队名称" value={teamDrafts[editingTeam.id] ?? editingTeam.name} onChange={(event) => setTeamDrafts((current) => ({...current, [editingTeam.id]: event.target.value}))} />
+        </FormDialog>
+      )}
+
+      {showCreateTeam && (
+        <CreateTeamDialog
+          submitting={creatingTeam}
+          onCancel={() => setShowCreateTeam(false)}
+          onSubmit={submitTeam}
+        />
+      )}
+
+      {managingTeam && (
+        <TeamMembersDialog
+          key={`${managingTeam.id}-${(teamMembers[managingTeam.id] ?? []).map((member) => `${member.user.id}:${member.role}`).join(',')}`}
+          teamName={managingTeam.name}
+          users={users}
+          members={teamMembers[managingTeam.id] ?? []}
+          submitting={savingMembers}
+          onCancel={() => setManagingTeam(null)}
+          onSubmit={(draft) => saveTeamMembers(managingTeam, draft)}
+        />
+      )}
 
       {pendingAction?.type === 'delete-team' && (
         <ConfirmDialog
@@ -322,16 +203,6 @@ export function SettingsTeamsPage({client: clientOverride}: {client?: SettingsCl
           confirmLabel="删除团队"
           onCancel={() => setPendingAction(null)}
           onConfirm={() => { void deleteTeam(pendingAction.team) }}
-        />
-      )}
-      {pendingAction?.type === 'remove-member' && (
-        <ConfirmDialog
-          danger
-          title={`从 ${pendingAction.team.name} 移除 ${displayUser(pendingAction.member.user)}？`}
-          description="如果该成员是团队最后一名管理员，操作会被拒绝。"
-          confirmLabel="移除成员"
-          onCancel={() => setPendingAction(null)}
-          onConfirm={() => { void removeExistingMember(pendingAction.team, pendingAction.member) }}
         />
       )}
     </>

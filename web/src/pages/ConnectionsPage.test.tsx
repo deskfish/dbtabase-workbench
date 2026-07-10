@@ -27,6 +27,7 @@ function fakeSettings(): SettingsClient {
     listUsers: vi.fn(async (): Promise<UserSummary[]> => []),
     createUser: vi.fn(),
     updateUser: vi.fn(),
+    deleteUser: vi.fn(),
     setUserTeams: vi.fn(),
     listTeams: vi.fn(async () => teams),
     createTeam: vi.fn(),

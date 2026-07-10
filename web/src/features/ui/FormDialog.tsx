@@ -3,6 +3,7 @@ import {FormEvent, useEffect, useRef, type ReactNode} from 'react'
 export function FormDialog({
   title,
   description,
+  kicker = '表单',
   submitLabel,
   cancelLabel = '取消',
   submitting = false,
@@ -13,6 +14,7 @@ export function FormDialog({
 }: {
   title: string
   description?: string
+  kicker?: string | false
   submitLabel: string
   cancelLabel?: string
   submitting?: boolean
@@ -46,7 +48,7 @@ export function FormDialog({
         onClick={(event) => event.stopPropagation()}
         onSubmit={onSubmit}
       >
-        <span className="dialog-kicker">表单</span>
+        {kicker !== false && <span className="dialog-kicker">{kicker}</span>}
         <h2>{title}</h2>
         {description && <p>{description}</p>}
         <div className="dialog-form">{children}</div>

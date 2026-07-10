@@ -65,8 +65,21 @@
 .team-add-member { display: grid; gap: 8px; padding-top: 4px; border-top: 1px solid color-mix(in srgb, var(--line) 80%, transparent); }
 .team-add-member-form { display: grid; grid-template-columns: minmax(160px, 1fr) minmax(150px, auto) auto; align-items: end; gap: 10px; }
 .dialog-wide { width: min(560px, 100%); }
-.dialog-form { display: grid; gap: 12px; margin-bottom: 4px; }
+.dialog-form { display: grid; gap: 14px; margin-bottom: 4px; }
 .dialog-form .field-block { display: grid; gap: 7px; color: var(--muted); font-size: 12px; font-weight: 650; }
+.dialog-form-split { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
+.dialog h2:first-child { margin-top: 0; }
+.dialog p + .dialog-form { margin-top: 2px; }
+.user-team-picker-list { display: grid; gap: 0; margin: 0; padding: 0; list-style: none; border: 1px solid var(--line); border-radius: 14px; overflow: hidden; background: var(--surface); }
+.user-team-picker-row { display: grid; grid-template-columns: 18px minmax(0, 1fr) 150px; align-items: center; gap: 12px; padding: 10px 12px; border-bottom: 1px solid var(--line); }
+.user-team-picker-row:last-child { border-bottom: 0; }
+.user-team-picker-row:not(.is-joined) .user-team-picker-name { opacity: .72; }
+.user-team-picker-row:not(.is-joined) .select-control { opacity: .55; }
+.user-team-picker-name { display: grid; gap: 2px; min-width: 0; font-size: 13px; font-weight: 650; color: var(--ink); }
+.user-team-picker-name strong { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.user-team-picker-name span { color: var(--muted); font-size: 12px; font-weight: 500; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.user-team-picker-row input[type="checkbox"] { width: 16px; height: 16px; margin: 0; accent-color: var(--accent); cursor: pointer; }
+.team-member-summary { padding-top: 2px; }
 .settings-profile { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; }
 .settings-profile > span:not(.badge), .settings-row span { color: var(--muted); }
 .badge { display: inline-flex; align-items: center; min-height: 24px; padding: 0 9px; border: 1px solid color-mix(in srgb, var(--accent) 35%, var(--line)); border-radius: 999px; color: var(--accent); background: color-mix(in srgb, var(--accent) 10%, transparent); font-size: 12px; font-weight: 800; }
@@ -111,4 +124,4 @@
 .dialog h2 { margin: 8px 0 10px; font-size: 20px; letter-spacing: -.02em; }
 .dialog p { margin: 0 0 18px; color: var(--muted); line-height: 1.55; }
 .dialog-actions { display: flex; justify-content: flex-end; gap: 8px; margin-top: 18px; }
-@media (max-width: 760px) { .ops-shell { grid-template-columns: 1fr; grid-template-rows: auto auto minmax(0,1fr); } .ops-rail { grid-row: 1; flex-direction: row; overflow-x: auto; } .ops-rail nav { grid-auto-flow: column; grid-auto-columns: max-content; } .ops-topbar { grid-row: 2; min-height: 54px; } .settings-grid, .settings-team-picker, .settings-assignment-row, .team-add-member-form, .settings-inline-create { grid-template-columns: 1fr; } .settings-row, .team-member-row, .settings-member-form, .team-card-head, .settings-section-head { align-items: stretch; flex-direction: column; } .settings-row-actions, .settings-member-actions, .team-member-actions { justify-content: flex-start; } }
+@media (max-width: 760px) { .ops-shell { grid-template-columns: 1fr; grid-template-rows: auto auto minmax(0,1fr); } .ops-rail { grid-row: 1; flex-direction: row; overflow-x: auto; } .ops-rail nav { grid-auto-flow: column; grid-auto-columns: max-content; } .ops-topbar { grid-row: 2; min-height: 54px; } .settings-grid, .settings-team-picker, .settings-assignment-row, .team-add-member-form, .settings-inline-create, .dialog-form-split, .user-team-picker-row { grid-template-columns: 1fr; } .settings-row, .team-member-row, .settings-member-form, .team-card-head, .settings-section-head { align-items: stretch; flex-direction: column; } .settings-row-actions, .settings-member-actions, .team-member-actions { justify-content: flex-start; } }
