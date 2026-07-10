@@ -1,25 +1,18 @@
-import type {InputHTMLAttributes} from 'react'
-import {useId} from 'react'
+import {useId, type TextareaHTMLAttributes} from 'react'
+import './workbench.css'
 
-export function TextField({
-  label,
-  hint,
-  error,
-  className = '',
-  id,
-  ...props
-}: {
+export function TextAreaField({label, hint, error, className = '', id, ...props}: {
   label: string
   hint?: string
   error?: string
-} & InputHTMLAttributes<HTMLInputElement>) {
+} & TextareaHTMLAttributes<HTMLTextAreaElement>) {
   const generatedId = useId()
   const fieldId = id ?? props.name ?? generatedId
   const messageId = `${fieldId}-message`
   return (
     <div className={`oc-field ${className}`.trim()}>
       <label htmlFor={fieldId}>{label}</label>
-      <input
+      <textarea
         className={error ? 'oc-field-invalid' : undefined}
         {...props}
         id={fieldId}
