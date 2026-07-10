@@ -29,7 +29,7 @@ export function WorkbenchToolbar({title, subtitle, children, onOpenSidebar}: {
   return (
     <header className="workbench-toolbar" aria-label={`${title}工具栏`}>
       {onOpenSidebar && <button className="workbench-sidebar-trigger" aria-label="打开侧栏" type="button" onClick={onOpenSidebar}>导航</button>}
-      <div className="workbench-title"><strong>{title}</strong>{subtitle && <span>{subtitle}</span>}</div>
+      <div className="workbench-title"><h1>{title}</h1>{subtitle && <span>{subtitle}</span>}</div>
       {children && <div className="workbench-toolbar-actions">{children}</div>}
     </header>
   )

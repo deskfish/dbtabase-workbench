@@ -23,7 +23,7 @@
 }
 
 .workbench-title { min-width: 0; display: flex; align-items: baseline; gap: 10px; }
-.workbench-title strong { overflow: hidden; font-size: 15px; text-overflow: ellipsis; white-space: nowrap; }
+.workbench-title h1 { margin: 0; overflow: hidden; font-size: 15px; text-overflow: ellipsis; white-space: nowrap; }
 .workbench-title span { overflow: hidden; color: var(--muted); font: 11px var(--font-mono); text-overflow: ellipsis; white-space: nowrap; }
 .workbench-toolbar-actions { min-width: 0; margin-left: auto; display: flex; align-items: center; justify-content: flex-end; gap: 8px; }
 .workbench-sidebar { min-height: 0; display: grid; grid-template-rows: minmax(0, 1fr) auto; border-right: 1px solid var(--line); background: var(--surface-2); }

@@ -32,7 +32,7 @@ export function AppShell() {
         <div><span className="status-dot" /> 已连接控制平面</div>
         <div className="account-chip"><span>{displayName.slice(0, 1).toUpperCase()}</span><strong>{displayName}</strong><button type="button" onClick={signOut}>退出</button></div>
       </header>
-      <main id="main-content" className="ops-main"><Outlet /></main>
+      <div id="main-content" className="ops-main" tabIndex={-1}><Outlet /></div>
     </div>
   )
 }
