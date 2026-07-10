@@ -31,3 +31,10 @@ it('redirects guests to login and authenticated users to connections', async () 
   renderRouter({session: fakeSession()}, ['/'])
   expect(await screen.findByRole('heading', {name: '连接中心'})).toBeVisible()
 })
+
+it('keeps one global navigation and marks the current route', async () => {
+  renderRouter({session: fakeSession()}, ['/connections'])
+  expect(await screen.findByRole('complementary', {name: '主导航'})).toBeInTheDocument()
+  expect(screen.getAllByRole('main')).toHaveLength(1)
+  expect(screen.getByRole('link', {name: '连接中心'})).toHaveAttribute('aria-current', 'page')
+})
