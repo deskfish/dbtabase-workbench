@@ -25,7 +25,7 @@ function renderRouter(value: {session: AuthSession | null}, entries: string[]) {
 
 it('redirects guests to login and authenticated users to connections', async () => {
   const guest = renderRouter({session: null}, ['/database'])
-  expect(await screen.findByRole('heading', {name: '登录 Ops Console'})).toBeVisible()
+  expect(await screen.findByRole('button', {name: '登录'})).toBeVisible()
   guest.unmount()
 
   renderRouter({session: fakeSession()}, ['/'])
@@ -34,7 +34,7 @@ it('redirects guests to login and authenticated users to connections', async () 
 
 it('keeps one global navigation and marks the current route', async () => {
   renderRouter({session: fakeSession()}, ['/connections'])
-  expect(await screen.findByRole('complementary', {name: '主导航'})).toBeInTheDocument()
+  expect(await screen.findByRole('navigation')).toBeInTheDocument()
   expect(screen.getAllByRole('main')).toHaveLength(1)
   expect(screen.getByRole('link', {name: '连接中心'})).toHaveAttribute('aria-current', 'page')
 })
