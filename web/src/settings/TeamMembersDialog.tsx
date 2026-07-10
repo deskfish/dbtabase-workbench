@@ -1,4 +1,5 @@
 import {FormEvent, useState} from 'react'
+import {Checkbox} from '../features/ui/Checkbox'
 import {FormDialog} from '../features/ui/FormDialog'
 import {SelectControl} from '../features/ui/SelectControl'
 import {displayUser, teamRoleLabel, teamRoleOptions} from './shared'
@@ -68,16 +69,14 @@ export function TeamMembersDialog({
             const member = draft.find((item) => item.userId === user.id)!
             return (
               <li key={user.id} className={`user-team-picker-row ${member.joined ? 'is-joined' : ''}`.trim()}>
-                <input
-                  type="checkbox"
+                <Checkbox
+                  className="user-team-picker-toggle"
+                  label={displayUser(user)}
+                  description={`@${user.username}`}
                   aria-label={`加入 ${displayUser(user)}`}
                   checked={member.joined}
                   onChange={(event) => updateMember(user.id, {joined: event.target.checked})}
                 />
-                <div className="user-team-picker-name">
-                  <strong>{displayUser(user)}</strong>
-                  <span>@{user.username}</span>
-                </div>
                 <SelectControl
                   ariaLabel={`${displayUser(user)} 团队角色`}
                   value={member.role}

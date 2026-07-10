@@ -78,7 +78,6 @@
 .user-team-picker-name { display: grid; gap: 2px; min-width: 0; font-size: 13px; font-weight: 650; color: var(--ink); }
 .user-team-picker-name strong { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .user-team-picker-name span { color: var(--muted); font-size: 12px; font-weight: 500; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.user-team-picker-row input[type="checkbox"] { width: 16px; height: 16px; margin: 0; accent-color: var(--accent); cursor: pointer; }
 .team-member-summary { padding-top: 2px; }
 .settings-profile { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; }
 .settings-profile > span:not(.badge), .settings-row span { color: var(--muted); }

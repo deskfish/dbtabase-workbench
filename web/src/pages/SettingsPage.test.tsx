@@ -175,6 +175,8 @@ it('shows manage-members only for teams the user administers', async () => {
   expect(await screen.findByRole('button', {name: '维护成员'})).toBeVisible()
   expect(screen.getAllByRole('button', {name: '维护成员'})).toHaveLength(1)
   expect(screen.queryByRole('button', {name: '添加成员'})).not.toBeInTheDocument()
+  await user.click(screen.getByRole('button', {name: '维护成员'}))
+  expect(screen.getByRole('checkbox', {name: '加入 Alice'}).closest('label')).toHaveClass('oc-checkbox')
 })
 
 it('saves team members from the manage dialog', async () => {

@@ -2,6 +2,7 @@ import { useState, type FormEvent } from 'react'
 import type { ConnectionInput } from '../../api/types'
 import type { DriverId } from '../../api/driver'
 import type { SavedConnection } from '../../storage/connections'
+import { Checkbox } from '../ui/Checkbox'
 import { SelectControl } from '../ui/SelectControl'
 import { driverDefaults, driverFormSpec, normalizeConnectionInput, validateConnectionInput } from './connectionFields'
 
@@ -74,7 +75,7 @@ export function ConnectionDialog({saved, sessionState = 'ready', onRetrySession,
         {form.user.visible && <label>{form.user.label}<input aria-label={form.user.label} value={user} onChange={(e)=>setUser(e.target.value)} placeholder={form.user.placeholder} /></label>}
         {form.password.visible && <label className="wide">{form.password.label}<input aria-label={form.password.label} type="password" value={password} onChange={(e)=>setPassword(e.target.value)} autoComplete="off" placeholder={form.password.placeholder} /></label>}
         <label className="wide">TLS 模式<SelectControl ariaLabel="TLS 模式" value={tlsMode} options={form.tlsOptions} onChange={setTLSMode}/></label>
-        <label className="wide checkbox"><input type="checkbox" checked={save} onChange={(e)=>setSave(e.target.checked)} />保存到左侧连接列表</label>
+        <Checkbox className="wide checkbox" label="保存到左侧连接列表" checked={save} onChange={(e)=>setSave(e.target.checked)} />
       </div>
       {sessionState === 'error' && <p className="form-error" role="alert">会话初始化失败，请点击「重试会话」。</p>}
       {error && <p className="form-error" role="alert">{error}</p>}

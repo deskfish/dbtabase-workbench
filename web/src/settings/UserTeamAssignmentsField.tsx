@@ -1,3 +1,4 @@
+import {Checkbox} from '../features/ui/Checkbox'
 import {SelectControl} from '../features/ui/SelectControl'
 import {membershipsForUser, teamRoleOptions} from './shared'
 import type {TeamMemberSummary, TeamSummary} from './client'
@@ -48,13 +49,13 @@ export function UserTeamAssignmentsField({
             const draft = teamDraft.find((item) => item.teamId === team.id)!
             return (
               <li key={team.id} className={`user-team-picker-row ${draft.joined ? 'is-joined' : ''}`.trim()}>
-                <input
-                  type="checkbox"
+                <Checkbox
+                  className="user-team-picker-toggle"
+                  label={team.name}
                   aria-label={`加入 ${team.name}`}
                   checked={draft.joined}
                   onChange={(event) => updateTeam(team.id, {joined: event.target.checked})}
                 />
-                <span className="user-team-picker-name">{team.name}</span>
                 <SelectControl
                   ariaLabel={`${team.name} 团队角色`}
                   value={draft.role}

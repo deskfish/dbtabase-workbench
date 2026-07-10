@@ -82,8 +82,10 @@
 .oc-checkbox input:checked + .oc-checkbox-box::after { content: ''; width: 7px; height: 4px; border: solid currentColor; border-width: 0 0 2px 2px; transform: translateY(-1px) rotate(-45deg); }
 .oc-checkbox input:focus-visible + .oc-checkbox-box { outline: 2px solid var(--accent); outline-offset: 2px; }
 .oc-checkbox input:disabled + .oc-checkbox-box { cursor: not-allowed; opacity: .55; }
+.oc-checkbox-compact { display: inline-grid; width: 16px; }
+.oc-checkbox-compact > span:last-child { position: absolute; width: 1px; height: 1px; margin: -1px; overflow: hidden; clip: rect(0, 0, 0, 0); white-space: nowrap; }
 
-@media (max-width: 759px) {
+@media (max-width: 1099px) {
   .workbench-frame { grid-template-columns: minmax(0, 1fr); }
   .workbench-sidebar-trigger { min-height: 32px; display: inline-flex; align-items: center; padding: 0 10px; border: 1px solid var(--line); border-radius: 8px; color: var(--ink); background: var(--surface); }
   .workbench-sidebar { position: absolute; z-index: 5; top: 52px; bottom: 0; left: 0; width: min(300px, calc(100% - 42px)); transform: translateX(-102%); transition: transform var(--dur-1) var(--ease-out); }
