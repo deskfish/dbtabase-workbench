@@ -58,18 +58,24 @@ it('creates a log session, uploads a file, and searches indexed lines', async ()
   const client = fakeClient()
   renderLogs(client)
 
-  expect(await screen.findByRole('heading', {name: '日志'})).toBeVisible()
+  expect(await screen.findByRole('banner', {name: '日志工作台工具栏'})).toBeVisible()
+  expect(screen.getByRole('complementary', {name: '日志会话'})).toBeInTheDocument()
+  expect(screen.getByRole('main', {name: '日志工作区'})).toBeInTheDocument()
   expect(screen.queryByText(/待迁移/)).not.toBeInTheDocument()
 
+  await userEvent.click(screen.getByRole('button', {name: '新建会话'}))
+  expect(screen.getByRole('dialog', {name: '新建日志会话'})).toBeInTheDocument()
   await userEvent.type(screen.getByLabelText('会话名称'), 'Deploy Logs')
   await userEvent.click(screen.getByRole('button', {name: '创建日志会话'}))
   expect((await screen.findAllByText('Deploy Logs'))[0]).toBeVisible()
 
+  await userEvent.click(screen.getByRole('tab', {name: '本地导入'}))
   const file = new File(['2026-07-08 10:00:00 ERROR failed payment\n'], 'api-a.log', {type: 'text/plain'})
-  await userEvent.upload(screen.getByLabelText('日志文件'), file)
+  await userEvent.upload(screen.getByLabelText('日志文件文件选择'), file)
   await userEvent.click(screen.getByRole('button', {name: '上传并索引'}))
   await waitFor(() => expect(client.uploadFile).toHaveBeenCalled())
 
+  await userEvent.click(screen.getByRole('tab', {name: '日志检索'}))
   await userEvent.type(screen.getByLabelText('搜索日志'), 'failed')
   await userEvent.click(screen.getByRole('button', {name: '搜索'}))
 
@@ -81,9 +87,11 @@ it('browses a saved SSH connection and starts a real-time tail stream', async ()
   const client = fakeClient()
   renderLogs(client)
 
-  await userEvent.type(await screen.findByLabelText('会话名称'), 'Live SSH Logs')
+  await userEvent.click(await screen.findByRole('button', {name: '新建会话'}))
+  await userEvent.type(screen.getByLabelText('会话名称'), 'Live SSH Logs')
   await userEvent.click(screen.getByRole('button', {name: '创建日志会话'}))
 
+  await userEvent.click(await screen.findByRole('tab', {name: 'SSH 文件'}))
   expect(await screen.findByText(/Team SSH/)).toBeVisible()
   await userEvent.click(screen.getByRole('button', {name: '浏览目录'}))
 
@@ -98,8 +106,10 @@ it('imports a remote SSH log file into the selected session', async () => {
   const client = fakeClient()
   renderLogs(client)
 
-  await userEvent.type(await screen.findByLabelText('会话名称'), 'Remote Import')
+  await userEvent.click(await screen.findByRole('button', {name: '新建会话'}))
+  await userEvent.type(screen.getByLabelText('会话名称'), 'Remote Import')
   await userEvent.click(screen.getByRole('button', {name: '创建日志会话'}))
+  await userEvent.click(await screen.findByRole('tab', {name: 'SSH 文件'}))
   await userEvent.click(await screen.findByRole('button', {name: '浏览目录'}))
   await userEvent.click(await screen.findByRole('button', {name: '导入 app.log'}))
 
@@ -111,8 +121,10 @@ it('scans a remote SSH directory for log files', async () => {
   const client = fakeClient()
   renderLogs(client)
 
-  await userEvent.type(await screen.findByLabelText('会话名称'), 'Remote Scan')
+  await userEvent.click(await screen.findByRole('button', {name: '新建会话'}))
+  await userEvent.type(screen.getByLabelText('会话名称'), 'Remote Scan')
   await userEvent.click(screen.getByRole('button', {name: '创建日志会话'}))
+  await userEvent.click(await screen.findByRole('tab', {name: 'SSH 文件'}))
   await userEvent.click(await screen.findByRole('button', {name: '扫描日志'}))
 
   await waitFor(() => expect(client.scanSsh).toHaveBeenCalled())

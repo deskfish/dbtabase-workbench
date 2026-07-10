@@ -1,7 +1,15 @@
-import { FormEvent, useEffect, useMemo, useRef, useState } from 'react'
-import { useAuth } from '../auth/AuthProvider'
-import { SelectControl } from '../features/ui/SelectControl'
-import { logsClient, type LogEntry, type LogScope, type LogSession, type LogsClient, type RemoteLogEntry, type SSHLogConnection } from '../logs/client'
+import {FormEvent, useEffect, useMemo, useRef, useState} from 'react'
+import {useAuth} from '../auth/AuthProvider'
+import {DataGrid} from '../features/ui/DataGrid'
+import {Dropzone} from '../features/ui/Dropzone'
+import {EmptyState} from '../features/ui/EmptyState'
+import {FormDialog} from '../features/ui/FormDialog'
+import {SelectControl} from '../features/ui/SelectControl'
+import {StatusBadge, type StatusTone} from '../features/ui/StatusBadge'
+import {TextField} from '../features/ui/TextField'
+import {WorkbenchContent, WorkbenchFrame, WorkbenchSidebar, WorkbenchToolbar} from '../features/ui/WorkbenchFrame'
+import {WorkspaceTabs} from '../features/ui/WorkspaceTabs'
+import {logsClient, type LogEntry, type LogScope, type LogSession, type LogsClient, type RemoteLogEntry, type SSHLogConnection} from '../logs/client'
 import './LogsPage.css'
 
 function messageFor(error: unknown): string {
@@ -38,9 +46,26 @@ function formatSize(bytes: number): string {
   return `${bytes} B`
 }
 
+function tailStatusLabel(status: 'idle' | 'connecting' | 'live' | 'stopped' | 'error'): string {
+  if (status === 'connecting') return '连接中'
+  if (status === 'live') return '实时'
+  if (status === 'stopped') return '已停止'
+  if (status === 'error') return '错误'
+  return '空闲'
+}
+
+function tailStatusTone(status: 'idle' | 'connecting' | 'live' | 'stopped' | 'error'): StatusTone {
+  if (status === 'live') return 'success'
+  if (status === 'connecting') return 'info'
+  if (status === 'error') return 'danger'
+  if (status === 'stopped') return 'warning'
+  return 'neutral'
+}
+
 const LOG_FILE = /\.(log|txt|out|err)$/i
 
 type TailLine = {id: number; text: string; level: string}
+type LogsWorkspace = 'search' | 'upload' | 'ssh' | 'tail'
 
 export function LogsPage({client = logsClient}: {client?: LogsClient}) {
   const {session} = useAuth()
@@ -76,9 +101,12 @@ export function LogsPage({client = logsClient}: {client?: LogsClient}) {
   const [tailStatus, setTailStatus] = useState<'idle' | 'connecting' | 'live' | 'stopped' | 'error'>('idle')
   const [tailLines, setTailLines] = useState<TailLine[]>([])
   const [tailFilter, setTailFilter] = useState('')
-  const [tailInitialLines, setTailInitialLines] = useState(200)
+  const [tailInitialLines, setTailInitialLines] = useState('200')
   const [tailServiceName, setTailServiceName] = useState('')
   const [tailNodeName, setTailNodeName] = useState('')
+  const [workspace, setWorkspace] = useState<LogsWorkspace>('search')
+  const [showCreateSession, setShowCreateSession] = useState(false)
+  const [sidebarOpen, setSidebarOpen] = useState(false)
   const tailAbortRef = useRef<AbortController | null>(null)
   const tailLineIdRef = useRef(0)
 
@@ -134,6 +162,8 @@ export function LogsPage({client = logsClient}: {client?: LogsClient}) {
       setSessions((current) => [created, ...current.filter((item) => item.id !== created.id)])
       setSelectedId(created.id)
       setNewName('')
+      setShowCreateSession(false)
+      setWorkspace('search')
       setSuccess('日志会话已创建')
     } catch (err) {
       setError(messageFor(err))
@@ -200,8 +230,7 @@ export function LogsPage({client = logsClient}: {client?: LogsClient}) {
     }
   }
 
-  async function browseSsh(event?: FormEvent, pathOverride?: string) {
-    event?.preventDefault()
+  async function browseSsh(pathOverride?: string) {
     if (!sshConnectionId) {
       setError('请先选择 SSH 连接')
       return
@@ -262,15 +291,17 @@ export function LogsPage({client = logsClient}: {client?: LogsClient}) {
     setTailing(true)
     setTailStatus('connecting')
     setTailPath(entry.path)
+    setWorkspace('tail')
     setTailLines([])
     setError('')
     setSuccess('')
+    const initialLines = Math.min(5000, Math.max(0, Number(tailInitialLines) || 0))
     try {
       await client.tailSsh({
         sessionId: selected.id,
         connectionId: sshConnectionId,
         path: entry.path,
-        lines: tailInitialLines,
+        lines: initialLines,
         serviceName: tailServiceName.trim(),
         nodeName: tailNodeName.trim(),
       }, (event) => {
@@ -375,203 +406,118 @@ export function LogsPage({client = logsClient}: {client?: LogsClient}) {
   }
 
   return (
-    <section className="ops-page logs-page">
-      <div className="page-heading-row">
-        <div>
-          <p className="login-kicker">LOGS</p>
-          <h1>日志</h1>
-          <p>创建日志分析会话，上传本地日志，或通过已保存的 SSH 连接浏览远程文件并实时 tail。</p>
-        </div>
-      </div>
-      {success && <p className="form-success" role="status">{success}</p>}
-      {error && <p className="form-error" role="alert">{error}</p>}
+    <section className="ops-workbench-page logs-page">
+      <WorkbenchFrame sidebarOpen={sidebarOpen} onSidebarOpenChange={setSidebarOpen}>
+        <WorkbenchToolbar title="日志工作台" subtitle={selected ? `${selected.name} · ${selected.fileCount} 文件` : `${sessions.length} 个会话`} onOpenSidebar={() => setSidebarOpen(true)}>
+          {selected && <StatusBadge tone={selected.status === 'ready' ? 'success' : 'info'}>{selected.status === 'ready' ? '已完成索引' : selected.status}</StatusBadge>}
+          <button className="oc-button primary" type="button" onClick={() => setShowCreateSession(true)}>新建会话</button>
+        </WorkbenchToolbar>
 
-      <div className="logs-layout">
-        <aside className="ops-panel logs-sidebar">
-          <h2>日志会话</h2>
-          <form className="logs-create-form" onSubmit={createSession}>
-            <label>会话名称<input value={newName} onChange={(event) => setNewName(event.target.value)} placeholder="例如 deploy-2026-07-08" /></label>
-            <div className="field-block">
-              <span>范围</span>
-              <SelectControl ariaLabel="日志范围" value={scope} options={[{value: 'personal', label: '个人'}, {value: 'team', label: '团队'}]} onChange={setScope} />
-            </div>
-            {scope === 'team' && (
-              <div className="field-block">
-                <span>团队</span>
-                <SelectControl ariaLabel="日志团队" value={teamId} options={adminTeams.map((team) => ({value: team.id, label: team.name}))} onChange={setTeamId} />
-              </div>
-            )}
-            <button className="oc-button primary" type="submit" disabled={creating}>{creating ? '创建中…' : '创建日志会话'}</button>
-          </form>
+        <WorkbenchSidebar label="日志会话" footer={<button className="oc-button primary logs-sidebar-create" aria-label="从侧栏新建会话" type="button" onClick={() => setShowCreateSession(true)}>新建会话</button>}>
+          <div className="logs-sidebar-head"><strong>会话</strong><span>{sessions.length}</span></div>
           <div className="logs-session-list">
-            {loading ? <p>正在加载日志会话…</p> : sessions.length === 0 ? <p className="empty-state">暂无日志会话，先创建一个并上传日志。</p> : sessions.map((item) => (
-              <button key={item.id} type="button" className="logs-session-item" data-active={selected?.id === item.id} onClick={() => { setSelectedId(item.id); setEntries([]); setTree([]); setTotal(0) }}>
+            {loading ? <div className="workbench-state" role="status">正在加载…</div> : sessions.length === 0 ? (
+              <EmptyState title="暂无日志会话" description="新建会话后可导入、检索和实时 Tail。" />
+            ) : sessions.map((item) => (
+              <button key={item.id} type="button" className="logs-session-item" data-active={selected?.id === item.id} onClick={() => { setSelectedId(item.id); setWorkspace('search'); setEntries([]); setTree([]); setTotal(0); setSidebarOpen(false) }}>
                 <strong>{item.name}</strong>
-                <span>{item.fileCount} 文件 · {item.serviceCount} 服务 · {item.scope === 'team' ? '团队' : '个人'}</span>
+                <span>{item.fileCount} 文件 · {item.serviceCount} 服务</span>
+                <small>{item.scope === 'team' ? '团队' : '个人'}</small>
               </button>
             ))}
           </div>
-        </aside>
+        </WorkbenchSidebar>
 
-        <main className="logs-workspace">
+        <WorkbenchContent label="日志工作区">
+          {(success || error) && <div className="logs-feedback">{success && <p className="form-success" role="status">{success}</p>}{error && <p className="form-error" role="alert">{error}</p>}</div>}
           {!selected ? (
-            <section className="ops-panel">
-              <h2>还没有会话</h2>
-              <p>创建日志会话后，这里会显示上传、搜索和分析视图。</p>
-            </section>
+            <EmptyState title="选择或新建日志会话" description="每个会话独立保存导入文件、SSH Tail 和检索结果。" action={<button className="oc-button primary" aria-label="从空状态新建会话" type="button" onClick={() => setShowCreateSession(true)}>新建会话</button>} />
           ) : (
-            <>
-              <section className="ops-panel logs-session-head">
-                <div>
-                  <h2>{selected.name}</h2>
-                  <p>{selected.status === 'ready' ? '已完成索引' : selected.status} · {selected.fileCount} 个文件</p>
-                </div>
-                <span className="badge">{selected.scope === 'team' ? '团队日志' : '个人日志'}</span>
-              </section>
+            <div className="logs-workspace">
+              <WorkspaceTabs
+                ariaLabel="日志工具"
+                value={workspace}
+                onChange={(value) => setWorkspace(value as LogsWorkspace)}
+                tabs={[
+                  {value: 'search', label: '日志检索'},
+                  {value: 'upload', label: '本地导入'},
+                  {value: 'ssh', label: 'SSH 文件'},
+                  {value: 'tail', label: '实时 Tail'},
+                ]}
+              />
 
-              <section className="ops-panel logs-upload-panel">
-                <h2>上传日志</h2>
-                <form className="logs-upload-form" onSubmit={upload}>
-                  <label>日志文件<input aria-label="日志文件" type="file" accept=".log,.txt,text/plain" onChange={(event) => setFile(event.target.files?.[0] ?? null)} /></label>
-                  <label>服务名<input value={serviceName} onChange={(event) => setServiceName(event.target.value)} placeholder="留空则按文件名推断" /></label>
-                  <label>节点名<input value={nodeName} onChange={(event) => setNodeName(event.target.value)} placeholder="留空则按文件名推断" /></label>
-                  <button className="oc-button primary" type="submit" disabled={!file || uploading}>{uploading ? '索引中…' : '上传并索引'}</button>
-                </form>
-              </section>
+              {workspace === 'search' && (
+                <section className="logs-panel logs-search-panel" aria-label="日志检索">
+                  <form className="logs-search-toolbar" onSubmit={search}>
+                    <TextField label="搜索日志" value={query} onChange={(event) => setQuery(event.target.value)} placeholder="关键字，例如 failed、timeout" />
+                    <div className="field-block"><span>级别</span><SelectControl ariaLabel="日志级别" value={level} options={[{value: '', label: '全部'}, {value: 'ERROR', label: 'ERROR'}, {value: 'WARN', label: 'WARN'}, {value: 'INFO', label: 'INFO'}, {value: 'DEBUG', label: 'DEBUG'}]} onChange={setLevel} /></div>
+                    <button className="oc-button primary" type="submit" disabled={searching}>{searching ? '搜索中…' : '搜索'}</button>
+                    <span className="logs-result-count">{total} 条匹配</span>
+                  </form>
+                  {tree.length > 0 && <div className="logs-scope-summary" aria-label="服务节点">{tree.map((service) => service.nodes.map((node) => <StatusBadge key={`${service.serviceName}/${node.nodeName}`} tone="info">{service.serviceName} / {node.nodeName}</StatusBadge>))}</div>}
+                  <DataGrid label="日志检索结果" loading={searching} empty={entries.length === 0 ? <EmptyState title="暂无查询结果" description="导入日志后输入关键字或直接搜索全部内容。" /> : undefined}>
+                    <thead><tr><th>时间</th><th>级别</th><th>服务/节点</th><th>内容</th><th>行</th></tr></thead>
+                    <tbody>{entries.map((entry) => <tr key={entry.id}><td>{formatTime(entry.timestampMs)}</td><td><span className={`log-level ${levelTone(entry.level)}`}>{entry.level}</span></td><td>{entry.serviceName} / {entry.nodeName}</td><td className="logs-message"><code>{entry.message}</code></td><td>{entry.lineNumber}</td></tr>)}</tbody>
+                  </DataGrid>
+                </section>
+              )}
 
-              <section className="ops-panel logs-ssh-panel">
-                <div className="panel-title-row">
-                  <div>
-                    <h2>SSH 实时 tail</h2>
-                    <p>复用统一连接库中的 SSH 连接，按当前会话权限写入日志索引。</p>
-                  </div>
-                  <span className={`logs-tail-status ${tailStatus}`}>{tailStatus === 'live' ? 'LIVE' : tailStatus.toUpperCase()}</span>
-                </div>
-
-                {sshConnections.length === 0 ? (
-                  <div className="empty-state">暂无 SSH 连接。请先到「连接」页创建 kind=ssh 的个人或团队连接。</div>
-                ) : (
-                  <>
-                    <form className="logs-ssh-form" onSubmit={browseSsh}>
-                      <div className="field-block">
-                        <span>SSH 连接</span>
-                        <SelectControl
-                          ariaLabel="SSH 连接"
-                          value={sshConnectionId}
-                          options={sshConnections.map((item) => ({value: item.id, label: `${item.name} · ${item.endpoint.host}:${item.endpoint.port}`}))}
-                          onChange={(value) => {
-                            setSshConnectionId(value)
-                            setRemoteEntries([])
-                          }}
-                        />
-                      </div>
-                      <label>远程目录<input aria-label="远程目录" value={remotePath} onChange={(event) => setRemotePath(event.target.value)} placeholder="/var/log" /></label>
-                      <label>初始行数<input aria-label="Tail 初始行数" type="number" min={0} max={5000} value={tailInitialLines} onChange={(event) => setTailInitialLines(Math.min(5000, Math.max(0, Number(event.target.value) || 0)))} /></label>
-                      <button className="oc-button" type="button" disabled={!sshConnectionId || sshBusy} onClick={() => void testSshConnection()}>{sshBusy ? '处理中…' : '测试连接'}</button>
-                      <button className="oc-button primary" type="submit" disabled={!sshConnectionId || sshBusy}>{sshBusy ? '读取中…' : '浏览目录'}</button>
-                      <button className="oc-button" type="button" disabled={!sshConnectionId || sshBusy} onClick={() => void scanSsh()}>扫描日志</button>
-                    </form>
-
-                    <div className="logs-tail-fields">
-                      <label>服务名<input value={tailServiceName} onChange={(event) => setTailServiceName(event.target.value)} placeholder="留空按文件名推断" /></label>
-                      <label>节点名<input value={tailNodeName} onChange={(event) => setTailNodeName(event.target.value)} placeholder={selectedSshConnection?.endpoint.host ?? '远程主机'} /></label>
+              {workspace === 'upload' && (
+                <section className="logs-panel logs-upload-panel" aria-label="本地导入">
+                  <header className="logs-panel-head"><div><strong>上传本地日志</strong><span>支持 .log 与 .txt 文件</span></div></header>
+                  <form className="logs-upload-form" onSubmit={upload}>
+                    <Dropzone label="日志文件" accept=".log,.txt,text/plain" file={file} onChange={setFile} />
+                    <div className="logs-upload-fields">
+                      <TextField label="服务名" value={serviceName} onChange={(event) => setServiceName(event.target.value)} placeholder="留空则按文件名推断" />
+                      <TextField label="节点名" value={nodeName} onChange={(event) => setNodeName(event.target.value)} placeholder="留空则按文件名推断" />
                     </div>
+                    <div className="logs-form-actions"><button className="oc-button primary" type="submit" disabled={!file || uploading}>{uploading ? '索引中…' : '上传并索引'}</button></div>
+                  </form>
+                </section>
+              )}
 
-                    <div className="logs-ssh-workspace">
-                      <div className="logs-remote-browser">
-                        <div className="logs-remote-toolbar">
-                          <button className="oc-button" type="button" disabled={sshBusy || remotePath === '/'} onClick={() => void browseSsh(undefined, parentRemotePath(remotePath))}>上级</button>
-                          <span>{remotePath}</span>
-                          <button className="oc-button" type="button" disabled={batchImporting || visibleRemoteEntries.every((entry) => entry.type !== 'file')} onClick={() => void importVisibleFiles()}>{batchImporting ? '批量导入中…' : '导入全部'}</button>
-                        </div>
-                        {visibleRemoteEntries.length === 0 ? (
-                          <div className="empty-state">还没有读取目录，或当前目录没有 .log / .txt / .out / .err 文件。</div>
-                        ) : visibleRemoteEntries.map((entry) => (
-                          <article key={entry.path} className="logs-remote-entry" data-type={entry.type}>
-                            <div>
-                              <strong>{entry.name}</strong>
-                              <span>{entry.type === 'directory' ? '目录' : `${formatSize(entry.size)} · ${formatTime(entry.modifiedAt)}`}</span>
-                            </div>
-                            {entry.type === 'directory' ? (
-                              <button className="oc-button" type="button" onClick={() => void browseSsh(undefined, entry.path)}>进入</button>
-                            ) : (
-                              <div className="logs-remote-actions">
-                                <button className="oc-button" type="button" aria-label={`导入 ${entry.name}`} disabled={importingPath === entry.path} onClick={() => void importRemoteFile(entry)}>
-                                  {importingPath === entry.path ? '导入中…' : '导入'}
-                                </button>
-                                <button className="oc-button primary" type="button" aria-label={`Tail ${entry.name}`} disabled={tailing && tailPath === entry.path} onClick={() => void startTail(entry)}>
-                                  {tailing && tailPath === entry.path ? 'Tail 中…' : 'Tail'}
-                                </button>
-                              </div>
-                            )}
-                          </article>
-                        ))}
+              {workspace === 'ssh' && (
+                <section className="logs-panel logs-ssh-panel" aria-label="SSH 文件">
+                  {sshConnections.length === 0 ? <EmptyState title="暂无 SSH 连接" description="请先在连接中心创建 SSH 类型的个人或团队连接。" /> : <>
+                    <div className="logs-ssh-controls">
+                      <div className="logs-ssh-fields">
+                        <div className="field-block"><span>SSH 连接</span><SelectControl ariaLabel="SSH 连接" value={sshConnectionId} options={sshConnections.map((item) => ({value: item.id, label: `${item.name} · ${item.endpoint.host}:${item.endpoint.port}`}))} onChange={(value) => { setSshConnectionId(value); setRemoteEntries([]) }} /></div>
+                        <TextField label="远程目录" value={remotePath} onChange={(event) => setRemotePath(event.target.value)} placeholder="/var/log" />
+                        <TextField label="初始行数" inputMode="numeric" value={tailInitialLines} onChange={(event) => setTailInitialLines(event.target.value)} />
                       </div>
-
-                      <div className="logs-tail-console">
-                        <div className="logs-tail-toolbar">
-                          <label>过滤<input aria-label="过滤 tail 输出" value={tailFilter} onChange={(event) => setTailFilter(event.target.value)} placeholder="关键字" /></label>
-                          <button className="oc-button" type="button" disabled={tailStatus !== 'live' && tailStatus !== 'connecting'} onClick={stopTail}>停止</button>
-                          <button className="oc-button" type="button" disabled={tailLines.length === 0} onClick={() => setTailLines([])}>清空</button>
-                        </div>
-                        <div className="logs-tail-output" aria-live="polite">
-                          {visibleTailLines.length === 0 ? (
-                            <p>{tailStatus === 'connecting' ? '正在连接 tail 流…' : '选择远程日志文件后开始实时输出。'}</p>
-                          ) : visibleTailLines.map((line) => (
-                            <div key={line.id} className="logs-tail-line" data-level={levelTone(line.level)}>
-                              <code>{line.text}</code>
-                            </div>
-                          ))}
-                        </div>
+                      <div className="logs-ssh-fields logs-ssh-meta">
+                        <TextField label="服务名" value={tailServiceName} onChange={(event) => setTailServiceName(event.target.value)} placeholder="留空按文件名推断" />
+                        <TextField label="节点名" value={tailNodeName} onChange={(event) => setTailNodeName(event.target.value)} placeholder={selectedSshConnection?.endpoint.host ?? '远程主机'} />
+                        <div className="logs-form-actions"><button className="oc-button" type="button" disabled={!sshConnectionId || sshBusy} onClick={() => void testSshConnection()}>测试连接</button><button className="oc-button primary" type="button" disabled={!sshConnectionId || sshBusy} onClick={() => void browseSsh()}>{sshBusy ? '读取中…' : '浏览目录'}</button><button className="oc-button" type="button" disabled={!sshConnectionId || sshBusy} onClick={() => void scanSsh()}>扫描日志</button></div>
                       </div>
                     </div>
-                  </>
-                )}
-              </section>
+                    <div className="logs-remote-toolbar"><button className="oc-button" type="button" disabled={sshBusy || remotePath === '/'} onClick={() => void browseSsh(parentRemotePath(remotePath))}>上级</button><code>{remotePath}</code><button className="oc-button" type="button" disabled={batchImporting || visibleRemoteEntries.every((entry) => entry.type !== 'file')} onClick={() => void importVisibleFiles()}>{batchImporting ? '批量导入中…' : '导入全部'}</button></div>
+                    <DataGrid label="远程日志文件" loading={sshBusy} empty={visibleRemoteEntries.length === 0 ? <EmptyState title="暂无远程日志" description="浏览目录或递归扫描 .log、.txt、.out、.err 文件。" /> : undefined}>
+                      <thead><tr><th>名称</th><th>信息</th><th>操作</th></tr></thead>
+                      <tbody>{visibleRemoteEntries.map((entry) => <tr key={entry.path}><th scope="row">{entry.name}</th><td>{entry.type === 'directory' ? '目录' : `${formatSize(entry.size)} · ${formatTime(entry.modifiedAt)}`}</td><td><div className="row-actions">{entry.type === 'directory' ? <button className="oc-button" type="button" onClick={() => void browseSsh(entry.path)}>进入</button> : <><button className="oc-button" type="button" aria-label={`导入 ${entry.name}`} disabled={importingPath === entry.path} onClick={() => void importRemoteFile(entry)}>{importingPath === entry.path ? '导入中…' : '导入'}</button><button className="oc-button primary" type="button" aria-label={`Tail ${entry.name}`} disabled={tailing && tailPath === entry.path} onClick={() => void startTail(entry)}>{tailing && tailPath === entry.path ? 'Tail 中…' : 'Tail'}</button></>}</div></td></tr>)}</tbody>
+                    </DataGrid>
+                  </>}
+                </section>
+              )}
 
-              <section className="ops-panel logs-search-panel">
-                <div className="panel-title-row">
-                  <h2>查询视图</h2>
-                  <span>{total} 条匹配</span>
-                </div>
-                <form className="logs-search-form" onSubmit={search}>
-                  <label>搜索日志<input aria-label="搜索日志" value={query} onChange={(event) => setQuery(event.target.value)} placeholder="关键字，例如 failed、timeout、订单号" /></label>
-                  <div className="field-block">
-                    <span>级别</span>
-                    <SelectControl ariaLabel="日志级别" value={level} options={[{value: '', label: '全部'}, {value: 'ERROR', label: 'ERROR'}, {value: 'WARN', label: 'WARN'}, {value: 'INFO', label: 'INFO'}, {value: 'DEBUG', label: 'DEBUG'}]} onChange={setLevel} />
-                  </div>
-                  <button className="oc-button" type="submit" disabled={searching}>{searching ? '搜索中…' : '搜索'}</button>
-                </form>
-
-                {tree.length > 0 && (
-                  <div className="logs-scope-summary" aria-label="服务节点">
-                    {tree.map((service) => service.nodes.map((node) => <span key={`${service.serviceName}/${node.nodeName}`} className="badge">{service.serviceName} / {node.nodeName}</span>))}
-                  </div>
-                )}
-
-                {entries.length === 0 ? <div className="empty-state">暂无查询结果。上传日志后可直接搜索。</div> : (
-                  <div className="logs-table-wrap">
-                    <table className="logs-table">
-                      <thead><tr><th>时间</th><th>级别</th><th>服务/节点</th><th>内容</th><th>行</th></tr></thead>
-                      <tbody>
-                        {entries.map((entry) => (
-                          <tr key={entry.id}>
-                            <td>{formatTime(entry.timestampMs)}</td>
-                            <td><span className={`log-level ${levelTone(entry.level)}`}>{entry.level}</span></td>
-                            <td>{entry.serviceName} / {entry.nodeName}</td>
-                            <td><code>{entry.message}</code></td>
-                            <td>{entry.lineNumber}</td>
-                          </tr>
-                        ))}
-                      </tbody>
-                    </table>
-                  </div>
-                )}
-              </section>
-            </>
+              {workspace === 'tail' && (
+                <section className="logs-tail-panel" aria-label="实时 Tail">
+                  <div className="logs-tail-toolbar"><TextField label="过滤" value={tailFilter} onChange={(event) => setTailFilter(event.target.value)} placeholder="关键字" /><StatusBadge tone={tailStatusTone(tailStatus)}>{tailStatusLabel(tailStatus)}</StatusBadge><button className="oc-button" type="button" disabled={tailStatus !== 'live' && tailStatus !== 'connecting'} onClick={stopTail}>停止</button><button className="oc-button" type="button" disabled={tailLines.length === 0} onClick={() => setTailLines([])}>清空</button></div>
+                  <div className="logs-tail-output" role="log" aria-label="Tail 输出"><div className="visually-hidden" aria-live="polite">{tailStatusLabel(tailStatus)}</div>{visibleTailLines.length === 0 ? <p>{tailStatus === 'connecting' ? '正在连接 tail 流…' : '在 SSH 文件标签中选择日志文件开始实时输出。'}</p> : visibleTailLines.map((line) => <div key={line.id} className="logs-tail-line" data-level={levelTone(line.level)}><code>{line.text}</code></div>)}</div>
+                </section>
+              )}
+            </div>
           )}
-        </main>
-      </div>
+        </WorkbenchContent>
+      </WorkbenchFrame>
+
+      {showCreateSession && (
+        <FormDialog title="新建日志会话" description="会话用于隔离日志文件、检索结果和实时 Tail。" submitLabel="创建日志会话" submitting={creating} onCancel={() => setShowCreateSession(false)} onSubmit={createSession}>
+          <TextField label="会话名称" value={newName} onChange={(event) => setNewName(event.target.value)} placeholder="例如 deploy-2026-07-08" />
+          <div className="field-block"><span>范围</span><SelectControl ariaLabel="日志范围" value={scope} options={[{value: 'personal', label: '个人'}, {value: 'team', label: '团队'}]} onChange={setScope} /></div>
+          {scope === 'team' && <div className="field-block"><span>团队</span><SelectControl ariaLabel="日志团队" value={teamId} options={adminTeams.map((team) => ({value: team.id, label: team.name}))} onChange={setTeamId} /></div>}
+        </FormDialog>
+      )}
     </section>
   )
 }
