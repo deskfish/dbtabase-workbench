@@ -6,6 +6,7 @@ import {AuthProvider} from '../auth/AuthProvider'
 import type {AuthSession} from '../auth/types'
 import {
   SettingsProfilePage,
+  SettingsLayout,
   SettingsTeamsPage,
   SettingsUsersPage,
 } from '../settings'
@@ -18,6 +19,20 @@ function session(role: string, teams: {id: string; name: string; role: string}[]
     teams,
     csrfToken: 'csrf-test',
   }
+}
+
+function renderSettingsLayout(authSession: AuthSession, client: SettingsClient) {
+  return render(
+    <MemoryRouter initialEntries={['/settings/profile']}>
+      <AuthProvider initialSession={authSession}>
+        <Routes>
+          <Route path="/settings" element={<SettingsLayout client={client} />}>
+            <Route path="profile" element={<SettingsProfilePage />} />
+          </Route>
+        </Routes>
+      </AuthProvider>
+    </MemoryRouter>,
+  )
 }
 
 function fakeClient(overrides: Partial<SettingsClient> = {}): SettingsClient {
@@ -93,6 +108,20 @@ it('shows members their profile and memberships only', async () => {
 
   expect(await screen.findByText('Alice')).toBeVisible()
   expect(await screen.findByText('Team One')).toBeVisible()
+})
+
+it('renders settings as a labeled workbench with profile data', async () => {
+  const client = fakeClient({
+    listUsers: vi.fn(async () => [{id: 'usr_alice', username: 'alice', displayName: 'Alice', systemRole: 'member', disabled: false}]),
+    listTeams: vi.fn(async () => [{id: 'team_one', name: 'Team One', role: 'member'}]),
+  })
+  renderSettingsLayout(session('member', [{id: 'team_one', name: 'Team One', role: 'member'}]), client)
+
+  expect(await screen.findByRole('banner', {name: '设置工具栏'})).toBeInTheDocument()
+  expect(screen.getByRole('complementary', {name: '设置分区'})).toBeInTheDocument()
+  expect(screen.getByRole('main', {name: '设置工作区'})).toBeInTheDocument()
+  expect(screen.getByRole('link', {name: '个人资料'})).toHaveAttribute('aria-current', 'page')
+  expect(await screen.findByRole('table', {name: '我的团队'})).toBeInTheDocument()
 })
 
 it('lets system admins create users in a modal without rendering passwords back', async () => {

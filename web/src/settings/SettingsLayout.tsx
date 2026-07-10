@@ -1,11 +1,13 @@
 import {useState} from 'react'
-import {NavLink, Navigate, Outlet, useOutletContext} from 'react-router-dom'
+import {NavLink, Navigate, Outlet, useLocation, useOutletContext} from 'react-router-dom'
 import {useAuth} from '../auth/AuthProvider'
-import {settingsClient} from './client'
+import {WorkbenchContent, WorkbenchFrame, WorkbenchSidebar, WorkbenchToolbar} from '../features/ui/WorkbenchFrame'
+import {settingsClient, type SettingsClient} from './client'
 import {manageableTeams} from './shared'
 import type {SettingsOutletContext} from './types'
 import {useSettingsData} from './useSettingsData'
 import '../layout/AppShell.css'
+import './SettingsLayout.css'
 
 const tabs = [
   {to: '/settings/profile', label: '个人资料', adminOnly: false, teamAdminOnly: false},
@@ -13,10 +15,12 @@ const tabs = [
   {to: '/settings/users', label: '用户', adminOnly: true, teamAdminOnly: false},
 ]
 
-export function SettingsLayout() {
+export function SettingsLayout({client = settingsClient}: {client?: SettingsClient}) {
   const {session} = useAuth()
   const [success, setSuccess] = useState('')
-  const data = useSettingsData(session, settingsClient)
+  const [sidebarOpen, setSidebarOpen] = useState(false)
+  const location = useLocation()
+  const data = useSettingsData(session, client)
   const isSystemAdmin = session?.user.systemRole === 'admin'
   const canManageTeams = isSystemAdmin || manageableTeams(data.teams, false).length > 0
 
@@ -24,7 +28,7 @@ export function SettingsLayout() {
 
   const outlet: SettingsOutletContext = {
     session,
-    client: settingsClient,
+    client,
     ...data,
     success,
     isSystemAdmin,
@@ -32,21 +36,26 @@ export function SettingsLayout() {
     setSuccess,
   }
 
+  const currentTab = tabs.find((tab) => location.pathname.startsWith(tab.to))?.label ?? '个人资料'
+
   return (
-    <section className="ops-page">
-      <p className="login-kicker">SETTINGS</p>
-      <h1>设置</h1>
-      <p>管理账号与团队。成员关系在「团队」页维护，「用户」页只管登录账号。</p>
-      {success && <p className="form-success" role="status">{success}</p>}
-      {data.error && <p className="form-error" role="alert">{data.error}</p>}
-      <nav className="settings-tabs" aria-label="设置分区">
-        {tabs.map((tab) => {
-          if (tab.adminOnly && !isSystemAdmin) return null
-          if (tab.teamAdminOnly && !canManageTeams) return null
-          return <NavLink key={tab.to} to={tab.to} className={({isActive}) => isActive ? 'active' : undefined}>{tab.label}</NavLink>
-        })}
-      </nav>
-      <Outlet context={outlet} />
+    <section className="ops-workbench-page settings-workbench-page">
+      <WorkbenchFrame sidebarOpen={sidebarOpen} onSidebarOpenChange={setSidebarOpen}>
+        <WorkbenchToolbar title="设置" subtitle={currentTab} onOpenSidebar={() => setSidebarOpen(true)} />
+        <WorkbenchSidebar label="设置分区">
+          <nav className="settings-workbench-nav" aria-label="设置导航">
+            {tabs.map((tab) => {
+              if (tab.adminOnly && !isSystemAdmin) return null
+              if (tab.teamAdminOnly && !canManageTeams) return null
+              return <NavLink key={tab.to} to={tab.to} onClick={() => setSidebarOpen(false)}>{tab.label}<span aria-hidden="true">{tab.label === '个人资料' ? '账号与归属' : tab.label === '团队' ? '成员与资源' : '登录与权限'}</span></NavLink>
+            })}
+          </nav>
+        </WorkbenchSidebar>
+        <WorkbenchContent label="设置工作区">
+          {(success || data.error) && <div className="settings-feedback">{success && <p className="form-success" role="status">{success}</p>}{data.error && <p className="form-error" role="alert">{data.error}</p>}</div>}
+          <Outlet context={outlet} />
+        </WorkbenchContent>
+      </WorkbenchFrame>
     </section>
   )
 }
