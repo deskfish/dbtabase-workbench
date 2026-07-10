@@ -1,4 +1,4 @@
-import { render, screen, waitFor, within } from '@testing-library/react'
+import { render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { expect, it, vi } from 'vitest'
 import { AuthProvider } from '../auth/AuthProvider'
@@ -74,6 +74,9 @@ it('filters all, database, ssh, personal, and team records', async () => {
 
   expect(await screen.findByText('Analytics')).toBeVisible()
   expect(screen.getByText('Bastion')).toBeVisible()
+  expect(screen.getByRole('banner', {name: '连接中心工具栏'})).toBeInTheDocument()
+  expect(screen.getByRole('complementary', {name: '连接筛选'})).toBeInTheDocument()
+  expect(screen.getByRole('main', {name: '连接列表'})).toBeInTheDocument()
 
   await userEvent.click(screen.getByRole('button', {name: '数据库'}))
   expect(await screen.findByText('Analytics')).toBeVisible()
@@ -92,6 +95,7 @@ it('creates a database record and refreshes the list', async () => {
   await screen.findByText('Analytics')
 
   await userEvent.click(screen.getByRole('button', {name: '新建连接'}))
+  expect(screen.getByRole('dialog', {name: '新建连接'})).toBeInTheDocument()
   await userEvent.type(screen.getByLabelText('连接名称'), 'Reporting')
   await userEvent.type(screen.getByLabelText('主机'), 'reporting.internal')
   await userEvent.clear(screen.getByLabelText('数据库名'))
@@ -111,7 +115,9 @@ it('edits records with redacted secret fields and preserves secrets when left bl
   const {client} = renderPage()
   await screen.findByText('Analytics')
   const row = screen.getByRole('row', {name: /Analytics/})
-  await userEvent.click(within(row).getByRole('button', {name: '编辑'}))
+  await userEvent.click(row)
+  expect(row).toHaveAttribute('aria-selected', 'true')
+  await userEvent.click(screen.getByRole('button', {name: '编辑选中连接'}))
 
   expect(screen.getByText('已保存密码；留空则继续保留。')).toBeVisible()
   expect(screen.getByLabelText('密码')).toHaveValue('')
@@ -125,8 +131,9 @@ it('shows authorization errors from delete operations', async () => {
   renderPage(fakeConnections({removeError: new Error('没有权限操作该连接')}))
   await screen.findByText('Bastion')
   const row = screen.getByRole('row', {name: /Bastion/})
-  await userEvent.click(within(row).getByRole('button', {name: '删除'}))
-  await userEvent.click(screen.getByRole('button', {name: '确认删除'}))
+  await userEvent.click(row)
+  await userEvent.click(screen.getByRole('button', {name: '删除选中连接'}))
+  await userEvent.click(screen.getByRole('button', {name: '删除连接'}))
 
   expect(await screen.findByRole('alert')).toHaveTextContent('没有权限操作该连接')
 })
