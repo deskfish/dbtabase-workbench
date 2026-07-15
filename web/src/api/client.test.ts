@@ -67,6 +67,22 @@ it('creates a session automatically before connecting', async () => {
   expect(new Headers(request.headers).get('X-Session-ID')).toBe('session-1')
 })
 
+it('opens a runtime session from a saved registry connection without sending credentials', async () => {
+  const fetcher = vi.fn()
+    .mockResolvedValueOnce(new Response(JSON.stringify({sessionId:'session-1'}), {status:201, headers:{'Content-Type':'application/json'}}))
+    .mockResolvedValueOnce(new Response(JSON.stringify({connectionId:'runtime-1', database:'app'}), {status:201, headers:{'Content-Type':'application/json'}}))
+  const client = new APIClient('', fetcher)
+
+  await expect(client.connectSaved('conn saved')).resolves.toEqual({connectionId:'runtime-1', database:'app'})
+
+  expect(fetcher).toHaveBeenCalledTimes(2)
+  expect(fetcher.mock.calls[1][0]).toBe('/api/registry/v2/connections/conn%20saved/sessions')
+  const request = fetcher.mock.calls[1][1] as RequestInit
+  expect(request.method).toBe('POST')
+  expect(request.body).toBeUndefined()
+  expect(new Headers(request.headers).get('X-Session-ID')).toBe('session-1')
+})
+
 it('recreates the session when the server rejects a stale session id', async () => {
   const fetcher = vi.fn()
     .mockResolvedValueOnce(new Response(JSON.stringify({sessionId:'stale-session'}), {status:201, headers:{'Content-Type':'application/json'}}))

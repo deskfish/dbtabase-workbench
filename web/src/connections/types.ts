@@ -42,3 +42,15 @@ export type ConnectionFilters = {
   kind?: '' | ConnectionKind
   scope?: '' | ConnectionScope
 }
+
+export type WorkbenchTarget = {
+  id: string
+  name: string
+  driver: DatabaseDriver
+  scope: ConnectionScope
+  teamId?: string
+  host: string
+  port: number
+  database: string
+  hasSecret: boolean
+}

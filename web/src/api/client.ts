@@ -68,6 +68,10 @@ export class APIClient {
     return this.request<{connectionId:string; database:string}>('/api/connections', {method:'POST', body:JSON.stringify(input)})
   }
 
+  async connectSaved(connectionId: string): Promise<{connectionId: string; database: string}> {
+    return this.request<{connectionId:string; database:string}>(`/api/registry/v2/connections/${encodeURIComponent(connectionId)}/sessions`, {method:'POST'})
+  }
+
   async disconnect(connectionId: string): Promise<void> {
     await this.request<void>(`/api/connections/${encodeURIComponent(connectionId)}`, {method:'DELETE'})
   }
