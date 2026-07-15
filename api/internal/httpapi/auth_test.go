@@ -136,6 +136,11 @@ func newAuthTestRouter(t *testing.T, secureCookie bool) (http.Handler, *identity
 }
 
 func newAuthTestRouterWithRegistry(t *testing.T, secureCookie bool, connections ConnectionRegistry) (http.Handler, *identity.Sessions, *fakeIdentity) {
+	router, sessions, fake, _ := newAuthTestRouterWithRegistryDependencies(t, secureCookie, connections, nil)
+	return router, sessions, fake
+}
+
+func newAuthTestRouterWithRegistryDependencies(t *testing.T, secureCookie bool, connections ConnectionRegistry, configure func(*Dependencies)) (http.Handler, *identity.Sessions, *fakeIdentity, *connectionSession.Store) {
 	t.Helper()
 	server := miniredis.RunT(t)
 	client := redis.NewClient(&redis.Options{Addr: server.Addr()})
@@ -148,15 +153,19 @@ func newAuthTestRouterWithRegistry(t *testing.T, secureCookie bool, connections 
 			Teams: map[string]string{"team_one": "admin"},
 		},
 	}
-	router := NewRouter(Dependencies{
-		Sessions:           connectionSession.NewStore(time.Minute),
+	runtimeSessions := connectionSession.NewStore(time.Minute)
+	deps := Dependencies{
+		Sessions:           runtimeSessions,
 		Identity:           fake,
 		AuthSessions:       sessions,
 		AuthSessionTTL:     time.Hour,
 		CookieSecure:       secureCookie,
 		ConnectionRegistry: connections,
-	})
-	return router, sessions, fake
+	}
+	if configure != nil {
+		configure(&deps)
+	}
+	return NewRouter(deps), sessions, fake, runtimeSessions
 }
 
 func findCookie(cookies []*http.Cookie, name string) *http.Cookie {

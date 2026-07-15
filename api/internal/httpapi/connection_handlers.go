@@ -6,7 +6,9 @@ import (
 	"errors"
 	"net/http"
 	"strings"
+	"time"
 
+	database "dbworkbench/api/internal/db"
 	"dbworkbench/api/internal/identity"
 	"dbworkbench/api/internal/registry"
 )
@@ -16,9 +18,11 @@ type ConnectionRegistry interface {
 	Create(context.Context, identity.Principal, registry.SaveInput) (registry.Connection, error)
 	Update(context.Context, identity.Principal, string, registry.SaveInput) (registry.Connection, error)
 	Delete(context.Context, identity.Principal, string) error
+	SecretForUse(context.Context, identity.Principal, string) (registry.Connection, registry.Secret, error)
 }
 
-func registerConnectionRegistryRoutes(mux *http.ServeMux, store ConnectionRegistry) {
+func registerConnectionRegistryRoutes(mux *http.ServeMux, deps Dependencies) {
+	store := deps.ConnectionRegistry
 	mux.HandleFunc("GET /api/registry/v2/connections", func(w http.ResponseWriter, r *http.Request) {
 		principal, ok := requirePrincipal(w, r)
 		if !ok {
@@ -36,6 +40,61 @@ func registerConnectionRegistryRoutes(mux *http.ServeMux, store ConnectionRegist
 			return
 		}
 		writeJSON(w, http.StatusOK, map[string]any{"connections": connections})
+	})
+
+	mux.HandleFunc("POST /api/registry/v2/connections/{id}/sessions", func(w http.ResponseWriter, r *http.Request) {
+		principal, ok := requirePrincipal(w, r)
+		if !ok {
+			return
+		}
+		if deps.Sessions == nil {
+			writeError(w, http.StatusServiceUnavailable, "connections_unavailable", "数据库连接服务不可用")
+			return
+		}
+		sessionID, ok := requireSession(w, r, deps.Sessions)
+		if !ok {
+			return
+		}
+		connection, secret, err := store.SecretForUse(r.Context(), principal, r.PathValue("id"))
+		if err != nil {
+			writeSavedConnectionError(w, err)
+			return
+		}
+		input, err := savedDatabaseInput(connection, secret)
+		if err != nil {
+			writeError(w, http.StatusBadRequest, "invalid_connection_kind", "该连接不能在数据库工作台中使用")
+			return
+		}
+		if deps.ValidateDestination != nil {
+			if err := deps.ValidateDestination(r.Context(), input.Host, input.Port); err != nil {
+				writeError(w, http.StatusBadRequest, "destination_invalid", "数据库地址无效或无法解析")
+				return
+			}
+		}
+		if deps.OpenHandle == nil {
+			writeError(w, http.StatusServiceUnavailable, "connections_unavailable", "数据库连接服务不可用")
+			return
+		}
+		if input.Driver == database.PostgreSQL && input.Database == "" {
+			input.Database = "postgres"
+		}
+		if input.Driver == database.MongoDB && input.Database == "" {
+			input.Database = "admin"
+		}
+		ctx, cancel := context.WithTimeout(r.Context(), 10*time.Second)
+		defer cancel()
+		handle, err := deps.OpenHandle(ctx, input)
+		if err != nil {
+			writeError(w, http.StatusBadGateway, "connection_failed", "无法连接数据库")
+			return
+		}
+		connectionID := deps.Sessions.PutHandle(sessionID, handle)
+		if connectionID == "" {
+			_ = handle.Close()
+			writeError(w, http.StatusUnauthorized, "invalid_session", "会话不存在或已过期")
+			return
+		}
+		writeJSON(w, http.StatusCreated, map[string]string{"connectionId": connectionID, "database": input.Database})
 	})
 
 	mux.HandleFunc("POST /api/registry/v2/connections", func(w http.ResponseWriter, r *http.Request) {
@@ -91,6 +150,48 @@ func registerConnectionRegistryRoutes(mux *http.ServeMux, store ConnectionRegist
 		}
 		w.WriteHeader(http.StatusNoContent)
 	})
+}
+
+func savedDatabaseInput(connection registry.Connection, secret registry.Secret) (database.ConnectionInput, error) {
+	if connection.Kind != "database" || !validKindDriver(connection.Kind, connection.Driver) {
+		return database.ConnectionInput{}, errors.New("unsupported connection kind")
+	}
+	var endpoint struct {
+		Host string `json:"host"`
+		Port uint16 `json:"port"`
+	}
+	if err := json.Unmarshal(connection.Endpoint, &endpoint); err != nil || strings.TrimSpace(endpoint.Host) == "" || endpoint.Port == 0 {
+		return database.ConnectionInput{}, errors.New("invalid endpoint")
+	}
+	var config struct {
+		Database string `json:"database"`
+		TLSMode  string `json:"tlsMode"`
+	}
+	if len(connection.Config) > 0 {
+		if err := json.Unmarshal(connection.Config, &config); err != nil {
+			return database.ConnectionInput{}, errors.New("invalid config")
+		}
+	}
+	return database.ConnectionInput{
+		Driver:   database.Driver(connection.Driver),
+		Host:     endpoint.Host,
+		Port:     endpoint.Port,
+		Database: config.Database,
+		User:     secret.Username,
+		Password: secret.Password,
+		TLSMode:  config.TLSMode,
+	}, nil
+}
+
+func writeSavedConnectionError(w http.ResponseWriter, err error) {
+	switch {
+	case errors.Is(err, registry.ErrNotFound):
+		writeError(w, http.StatusNotFound, "connection_not_found", "连接不存在")
+	case errors.Is(err, registry.ErrForbidden):
+		writeError(w, http.StatusForbidden, "forbidden", "没有权限使用该连接")
+	default:
+		writeError(w, http.StatusBadGateway, "connection_secret_unavailable", "无法读取连接凭据")
+	}
 }
 
 func validateConnectionInput(connection registry.Connection) error {

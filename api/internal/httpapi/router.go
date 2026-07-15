@@ -74,7 +74,7 @@ func NewRouter(deps Dependencies) http.Handler {
 		registerUserTeamRoutes(mux, deps)
 	}
 	if deps.ConnectionRegistry != nil {
-		registerConnectionRegistryRoutes(mux, deps.ConnectionRegistry)
+		registerConnectionRegistryRoutes(mux, deps)
 	}
 	if deps.Logs != nil {
 		registerLogRoutes(mux, deps)

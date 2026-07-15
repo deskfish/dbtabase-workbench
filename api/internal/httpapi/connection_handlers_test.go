@@ -3,21 +3,28 @@ package httpapi
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"net/http"
 	"net/http/httptest"
 	"strings"
 	"testing"
 
+	database "dbworkbench/api/internal/db"
 	"dbworkbench/api/internal/identity"
 	"dbworkbench/api/internal/registry"
 )
 
 type fakeConnectionRegistry struct {
-	principal identity.Principal
-	kind      string
-	scope     string
-	input     registry.SaveInput
-	err       error
+	principal        identity.Principal
+	kind             string
+	scope            string
+	input            registry.SaveInput
+	err              error
+	secretPrincipal  identity.Principal
+	secretID         string
+	secretConnection registry.Connection
+	secret           registry.Secret
+	secretErr        error
 }
 
 func (f *fakeConnectionRegistry) List(_ context.Context, p identity.Principal, kind, scope string) ([]registry.Connection, error) {
@@ -51,6 +58,184 @@ func (f *fakeConnectionRegistry) Update(_ context.Context, p identity.Principal,
 func (f *fakeConnectionRegistry) Delete(_ context.Context, p identity.Principal, _ string) error {
 	f.principal = p
 	return f.err
+}
+
+func (f *fakeConnectionRegistry) SecretForUse(_ context.Context, p identity.Principal, id string) (registry.Connection, registry.Secret, error) {
+	f.secretPrincipal = p
+	f.secretID = id
+	return f.secretConnection, f.secret, f.secretErr
+}
+
+func TestSavedDatabaseConnectionCreatesRuntimeSession(t *testing.T) {
+	fakeRegistry := &fakeConnectionRegistry{
+		secretConnection: registry.Connection{
+			ID: "conn_saved", Name: "Primary", Kind: "database", Driver: "postgres", Scope: "personal",
+			Endpoint: raw(`{"host":"db.internal","port":5432}`),
+			Config:   raw(`{"database":"app","tlsMode":"prefer"}`),
+		},
+		secret: registry.Secret{Username: "ops", Password: "top-secret"},
+	}
+	var opened database.ConnectionInput
+	router, authSessions, _, runtimeSessions := newAuthTestRouterWithRegistryDependencies(t, true, fakeRegistry, func(deps *Dependencies) {
+		deps.ValidateDestination = func(_ context.Context, host string, port uint16) error {
+			if host != "db.internal" || port != 5432 {
+				t.Fatalf("destination = %s:%d", host, port)
+			}
+			return nil
+		}
+		deps.OpenHandle = func(_ context.Context, input database.ConnectionInput) (*database.Handle, error) {
+			opened = input
+			return &database.Handle{Driver: database.PostgreSQL, Config: input}, nil
+		}
+	})
+	loginSession := createAuthSession(t, authSessions)
+	workbenchSession := runtimeSessions.CreateSession()
+
+	rr := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodPost, "/api/registry/v2/connections/conn_saved/sessions", nil)
+	req.Header.Set("X-Session-ID", workbenchSession)
+	req.Header.Set("X-CSRF-Token", loginSession.CSRFToken)
+	req.AddCookie(&http.Cookie{Name: authCookieName, Value: loginSession.ID})
+	router.ServeHTTP(rr, req)
+
+	if rr.Code != http.StatusCreated {
+		t.Fatalf("status = %d body = %s", rr.Code, rr.Body.String())
+	}
+	if fakeRegistry.secretPrincipal.User.ID != "usr_alice" || fakeRegistry.secretID != "conn_saved" {
+		t.Fatalf("principal = %+v id = %q", fakeRegistry.secretPrincipal, fakeRegistry.secretID)
+	}
+	if opened.Driver != database.PostgreSQL || opened.Host != "db.internal" || opened.Port != 5432 || opened.Database != "app" || opened.User != "ops" || opened.Password != "top-secret" || opened.TLSMode != "prefer" {
+		t.Fatalf("opened = %+v", opened)
+	}
+	if strings.Contains(rr.Body.String(), "top-secret") || strings.Contains(rr.Body.String(), "ops") {
+		t.Fatalf("secret leaked: %s", rr.Body.String())
+	}
+	var response struct {
+		ConnectionID string `json:"connectionId"`
+		Database     string `json:"database"`
+	}
+	if err := json.Unmarshal(rr.Body.Bytes(), &response); err != nil {
+		t.Fatal(err)
+	}
+	if response.ConnectionID == "" || response.Database != "app" {
+		t.Fatalf("response = %+v", response)
+	}
+	if _, ok := runtimeSessions.GetHandle(workbenchSession, response.ConnectionID); !ok {
+		t.Fatal("opened handle was not stored in the workbench session")
+	}
+}
+
+func TestSavedDatabaseConnectionRejectsInvalidAccessAndKinds(t *testing.T) {
+	tests := []struct {
+		name       string
+		registry   *fakeConnectionRegistry
+		wantStatus int
+		wantCode   string
+	}{
+		{name: "inaccessible", registry: &fakeConnectionRegistry{secretErr: registry.ErrForbidden}, wantStatus: http.StatusForbidden, wantCode: "forbidden"},
+		{name: "missing", registry: &fakeConnectionRegistry{secretErr: registry.ErrNotFound}, wantStatus: http.StatusNotFound, wantCode: "connection_not_found"},
+		{name: "ssh", registry: &fakeConnectionRegistry{secretConnection: registry.Connection{ID: "conn_ssh", Kind: "ssh", Driver: "ssh"}}, wantStatus: http.StatusBadRequest, wantCode: "invalid_connection_kind"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			router, authSessions, _, runtimeSessions := newAuthTestRouterWithRegistryDependencies(t, true, tt.registry, nil)
+			loginSession := createAuthSession(t, authSessions)
+			rr := httptest.NewRecorder()
+			req := httptest.NewRequest(http.MethodPost, "/api/registry/v2/connections/conn_saved/sessions", nil)
+			req.Header.Set("X-Session-ID", runtimeSessions.CreateSession())
+			req.Header.Set("X-CSRF-Token", loginSession.CSRFToken)
+			req.AddCookie(&http.Cookie{Name: authCookieName, Value: loginSession.ID})
+			router.ServeHTTP(rr, req)
+			if rr.Code != tt.wantStatus {
+				t.Fatalf("status = %d body = %s", rr.Code, rr.Body.String())
+			}
+			assertErrorCode(t, rr.Body.String(), tt.wantCode)
+		})
+	}
+}
+
+func TestSavedDatabaseConnectionRequiresLoginAndWorkbenchSession(t *testing.T) {
+	fakeRegistry := &fakeConnectionRegistry{}
+	router, authSessions, _, runtimeSessions := newAuthTestRouterWithRegistryDependencies(t, true, fakeRegistry, nil)
+	loginSession := createAuthSession(t, authSessions)
+
+	t.Run("login", func(t *testing.T) {
+		rr := httptest.NewRecorder()
+		req := httptest.NewRequest(http.MethodPost, "/api/registry/v2/connections/conn_saved/sessions", nil)
+		req.Header.Set("X-Session-ID", runtimeSessions.CreateSession())
+		router.ServeHTTP(rr, req)
+		if rr.Code != http.StatusUnauthorized {
+			t.Fatalf("status = %d body = %s", rr.Code, rr.Body.String())
+		}
+		assertErrorCode(t, rr.Body.String(), "auth_required")
+	})
+
+	t.Run("workbench session", func(t *testing.T) {
+		rr := httptest.NewRecorder()
+		req := httptest.NewRequest(http.MethodPost, "/api/registry/v2/connections/conn_saved/sessions", nil)
+		req.Header.Set("X-CSRF-Token", loginSession.CSRFToken)
+		req.AddCookie(&http.Cookie{Name: authCookieName, Value: loginSession.ID})
+		router.ServeHTTP(rr, req)
+		if rr.Code != http.StatusUnauthorized {
+			t.Fatalf("status = %d body = %s", rr.Code, rr.Body.String())
+		}
+		assertErrorCode(t, rr.Body.String(), "invalid_session")
+	})
+}
+
+func TestSavedDatabaseConnectionRejectsDestinationWithoutOpeningSecret(t *testing.T) {
+	fakeRegistry := &fakeConnectionRegistry{
+		secretConnection: registry.Connection{ID: "conn_saved", Kind: "database", Driver: "mysql", Endpoint: raw(`{"host":"blocked.internal","port":3306}`), Config: raw(`{"database":"app"}`)},
+		secret:           registry.Secret{Username: "ops", Password: "top-secret"},
+	}
+	opened := false
+	router, authSessions, _, runtimeSessions := newAuthTestRouterWithRegistryDependencies(t, true, fakeRegistry, func(deps *Dependencies) {
+		deps.ValidateDestination = func(context.Context, string, uint16) error { return errors.New("blocked") }
+		deps.OpenHandle = func(context.Context, database.ConnectionInput) (*database.Handle, error) {
+			opened = true
+			return nil, errors.New("must not open")
+		}
+	})
+	loginSession := createAuthSession(t, authSessions)
+	rr := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodPost, "/api/registry/v2/connections/conn_saved/sessions", nil)
+	req.Header.Set("X-Session-ID", runtimeSessions.CreateSession())
+	req.Header.Set("X-CSRF-Token", loginSession.CSRFToken)
+	req.AddCookie(&http.Cookie{Name: authCookieName, Value: loginSession.ID})
+	router.ServeHTTP(rr, req)
+	if rr.Code != http.StatusBadRequest || opened {
+		t.Fatalf("status = %d opened = %v body = %s", rr.Code, opened, rr.Body.String())
+	}
+	assertErrorCode(t, rr.Body.String(), "destination_invalid")
+	if strings.Contains(rr.Body.String(), "top-secret") {
+		t.Fatalf("secret leaked: %s", rr.Body.String())
+	}
+}
+
+func TestSavedDatabaseConnectionRedactsDriverErrors(t *testing.T) {
+	fakeRegistry := &fakeConnectionRegistry{
+		secretConnection: registry.Connection{ID: "conn_saved", Kind: "database", Driver: "postgres", Endpoint: raw(`{"host":"db.internal","port":5432}`), Config: raw(`{}`)},
+		secret:           registry.Secret{Username: "ops", Password: "top-secret"},
+	}
+	router, authSessions, _, runtimeSessions := newAuthTestRouterWithRegistryDependencies(t, true, fakeRegistry, func(deps *Dependencies) {
+		deps.OpenHandle = func(context.Context, database.ConnectionInput) (*database.Handle, error) {
+			return nil, errors.New("password top-secret rejected for ops")
+		}
+	})
+	loginSession := createAuthSession(t, authSessions)
+	rr := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodPost, "/api/registry/v2/connections/conn_saved/sessions", nil)
+	req.Header.Set("X-Session-ID", runtimeSessions.CreateSession())
+	req.Header.Set("X-CSRF-Token", loginSession.CSRFToken)
+	req.AddCookie(&http.Cookie{Name: authCookieName, Value: loginSession.ID})
+	router.ServeHTTP(rr, req)
+	if rr.Code != http.StatusBadGateway {
+		t.Fatalf("status = %d body = %s", rr.Code, rr.Body.String())
+	}
+	assertErrorCode(t, rr.Body.String(), "connection_failed")
+	if strings.Contains(rr.Body.String(), "top-secret") || strings.Contains(rr.Body.String(), "ops") {
+		t.Fatalf("driver error leaked credentials: %s", rr.Body.String())
+	}
 }
 
 func TestConnectionRegistryListUsesAuthenticatedPrincipalAndFilters(t *testing.T) {
