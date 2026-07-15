@@ -88,8 +88,8 @@ export function IndexDialog({
       <footer className="team-dialog-footer">
         <span className={error ? 'create-table-error' : 'create-table-hint'}>{error || '可多选字段，序号表示索引列顺序。'}</span>
         <div>
-          <button className="button" type="button" onClick={onClose}>取消</button>
-          <button className="button primary" type="button" onClick={submit}>{mode === 'create' ? '添加' : '保存'}</button>
+          <button className="oc-button" type="button" onClick={onClose}>取消</button>
+          <button className="oc-button primary" type="button" onClick={submit}>{mode === 'create' ? '添加' : '保存'}</button>
         </div>
       </footer>
     </section>

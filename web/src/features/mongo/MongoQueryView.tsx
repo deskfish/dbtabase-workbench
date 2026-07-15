@@ -39,7 +39,7 @@ export function MongoQueryView({
 
   return <div className="mongo-query-view">
     <div className="query-toolbar">
-      <button type="button" className="button primary button-with-icon" onClick={() => void run()} disabled={status === 'running'}>运行聚合</button>
+      <button type="button" className="oc-button primary button-with-icon" onClick={() => void run()} disabled={status === 'running'}>运行聚合</button>
       <span className="table-sort-badge">{collection}</span>
     </div>
     <section className="editor-pane"><textarea value={pipeline} onChange={(e) => setPipeline(e.target.value)} aria-label="Aggregation pipeline" style={{width: '100%', height: '100%', resize: 'none', border: 0, padding: 16, background: 'var(--bg)', color: 'var(--ink)', fontFamily: 'var(--font-mono)', fontSize: 13, lineHeight: 1.7}} /></section>

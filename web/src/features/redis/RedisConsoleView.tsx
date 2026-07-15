@@ -34,7 +34,7 @@ export function RedisConsoleView({
 
   return <div className="redis-console-view" style={{display: 'grid', gridTemplateRows: 'auto minmax(160px, 42%) minmax(0, 1fr)', minHeight: 0, flex: 1}}>
     <div className="query-toolbar">
-      <button type="button" className="button primary" onClick={() => void run()} disabled={status === 'running'}>执行</button>
+      <button type="button" className="oc-button primary" onClick={() => void run()} disabled={status === 'running'}>执行</button>
       <span className="table-sort-badge">禁止 FLUSHALL / CONFIG / DEBUG</span>
     </div>
     <section className="editor-pane"><textarea value={commands} onChange={(e) => setCommands(e.target.value)} aria-label="Redis 命令" style={{width: '100%', height: '100%', resize: 'none', border: 0, padding: 16, background: 'var(--bg)', color: 'var(--ink)', fontFamily: 'var(--font-mono)', fontSize: 13, lineHeight: 1.7}} /></section>

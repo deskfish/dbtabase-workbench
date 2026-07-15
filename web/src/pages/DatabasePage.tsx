@@ -10,5 +10,5 @@ export function DatabasePage() {
     setSessionBootstrap(api.createSession())
   }, [api])
 
-  return <div className="ops-database-page"><App api={api} sessionBootstrap={sessionBootstrap} /></div>
+  return <div className="product-database-page"><App api={api} sessionBootstrap={sessionBootstrap} embedded /></div>
 }

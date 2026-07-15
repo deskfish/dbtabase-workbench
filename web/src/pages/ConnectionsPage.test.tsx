@@ -1,4 +1,4 @@
-import { render, screen, waitFor } from '@testing-library/react'
+import { render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { expect, it, vi } from 'vitest'
 import { AuthProvider } from '../auth/AuthProvider'
@@ -7,6 +7,7 @@ import type { ConnectionsClient } from '../connections/client'
 import type { Connection, ConnectionFilters, SaveInput } from '../connections/types'
 import type { SettingsClient, TeamSummary, UserSummary } from '../settings/client'
 import { ConnectionsPage } from './ConnectionsPage'
+import { UnifiedShellTestHarness } from '../layout/UnifiedShellTestHarness'
 
 const records: Connection[] = [
   {id: 'conn_db', name: 'Analytics', kind: 'database', driver: 'postgres', scope: 'personal', ownerUserId: 'usr_alice', endpoint: {host: 'db.internal', port: 5432}, config: {database: 'app'}, hasSecret: true},
@@ -63,9 +64,11 @@ function fakeConnections(options: {removeError?: Error} = {}): ConnectionsClient
 
 function renderPage(client = fakeConnections(), settings = fakeSettings()) {
   render(
-    <AuthProvider initialSession={authSession()}>
-      <ConnectionsPage client={client} settings={settings} />
-    </AuthProvider>,
+    <UnifiedShellTestHarness>
+      <AuthProvider initialSession={authSession()}>
+        <ConnectionsPage client={client} settings={settings} />
+      </AuthProvider>
+    </UnifiedShellTestHarness>,
   )
   return {client, settings}
 }
@@ -73,27 +76,30 @@ function renderPage(client = fakeConnections(), settings = fakeSettings()) {
 it('filters all, database, ssh, personal, and team records', async () => {
   renderPage()
 
-  expect(await screen.findByText('Analytics')).toBeVisible()
+  expect(await screen.findByRole('row', {name: /Analytics/})).toBeVisible()
   expect(screen.getByText('Bastion')).toBeVisible()
-  expect(screen.getByRole('banner', {name: '连接中心工具栏'})).toBeInTheDocument()
+  expect(screen.getByRole('button', {name: '新建连接'})).toBeInTheDocument()
   expect(screen.getByRole('complementary', {name: '连接筛选'})).toBeInTheDocument()
-  expect(screen.getByRole('main', {name: '连接列表'})).toBeInTheDocument()
+  expect(screen.getByRole('heading', {name: 'Connections'})).toBeInTheDocument()
+  expect(screen.getByRole('searchbox', {name: '筛选连接'})).toBeInTheDocument()
+  expect(document.querySelector('.connection-sidebar-body .segmented')).not.toBeInTheDocument()
+  expect(await screen.findByRole('button', {name: '删除选中连接'})).toBeInTheDocument()
 
   await userEvent.click(screen.getByRole('button', {name: '数据库'}))
-  expect(await screen.findByText('Analytics')).toBeVisible()
+  expect(await screen.findByRole('row', {name: /Analytics/})).toBeVisible()
   expect(screen.queryByText('Bastion')).not.toBeInTheDocument()
 
   await userEvent.click(screen.getByRole('button', {name: 'SSH'}))
-  expect(await screen.findByText('Bastion')).toBeVisible()
+  expect(await screen.findByRole('row', {name: /Bastion/})).toBeVisible()
   expect(screen.queryByText('Analytics')).not.toBeInTheDocument()
 
   await userEvent.click(screen.getByRole('button', {name: '团队'}))
-  expect(await screen.findByText('Bastion')).toBeVisible()
+  expect(await screen.findByRole('row', {name: /Bastion/})).toBeVisible()
 })
 
 it('creates a database record and refreshes the list', async () => {
   const {client} = renderPage()
-  await screen.findByText('Analytics')
+  await screen.findByRole('row', {name: /Analytics/})
 
   await userEvent.click(screen.getByRole('button', {name: '新建连接'}))
   expect(screen.getByRole('dialog', {name: '新建连接'})).toBeInTheDocument()
@@ -114,7 +120,7 @@ it('creates a database record and refreshes the list', async () => {
 
 it('edits records with redacted secret fields and preserves secrets when left blank', async () => {
   const {client} = renderPage()
-  await screen.findByText('Analytics')
+  await screen.findByRole('row', {name: /Analytics/})
   const row = screen.getByRole('row', {name: /Analytics/})
   await userEvent.click(row)
   expect(row).toHaveAttribute('aria-selected', 'true')
@@ -126,6 +132,17 @@ it('edits records with redacted secret fields and preserves secrets when left bl
 
   await waitFor(() => expect(client.update).toHaveBeenCalled())
   expect(client.update).toHaveBeenCalledWith('conn_db', expect.not.objectContaining({secret: expect.anything()}))
+})
+
+it('reveals a selected connection inspector with a real workspace link', async () => {
+  renderPage()
+  await screen.findByRole('row', {name: /Analytics/})
+
+  await userEvent.click(screen.getByRole('row', {name: /Analytics/}))
+
+  const inspector = screen.getByRole('complementary', {name: '连接详情'})
+  expect(inspector).toHaveTextContent('db.internal:5432/app')
+  expect(within(inspector).getByRole('link', {name: '打开工作台'})).toHaveAttribute('href', '/database?connection=conn_db')
 })
 
 it('shows authorization errors from delete operations', async () => {

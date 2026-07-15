@@ -98,7 +98,7 @@ export function CreateTableDialog({
     <header className="team-dialog-head"><div><h2>新建表</h2><p>在数据库「{database}」中创建新表，填写表名与字段信息。</p></div><button className="icon-button" aria-label="关闭新建表" onClick={onClose}><Icon name="close"/></button></header>
     <div className="create-table-toolbar">
       <label>表名<input aria-label="表名" placeholder="例如 users" value={tableName} onChange={(event) => { setTableName(event.target.value); setError('') }}/></label>
-      <button className="button primary button-with-icon" type="button" onClick={addColumn}><Icon name="plus"/>新增字段</button>
+      <button className="oc-button primary button-with-icon" type="button" onClick={addColumn}><Icon name="plus"/>新增字段</button>
     </div>
     <div className="team-table-wrap create-table-wrap">
       <div className="create-table-head"><span>#</span><span>字段名</span><span>数据类型</span><span>主键</span><span>备注</span><span>操作</span></div>
@@ -111,6 +111,6 @@ export function CreateTableDialog({
         <button className="icon-button danger" type="button" aria-label={`删除字段 ${column.name || index + 1}`} disabled={columns.length <= 1} onClick={() => removeColumn(index)}><Icon name="trash"/></button>
       </article>)}</div>
     </div>
-    <footer className="team-dialog-footer"><span className={error ? 'create-table-error' : 'create-table-hint'}>{error || '字段类型可直接输入或从下拉选择；主键仅建议设置一列。'}</span><div><button className="button" type="button" onClick={onClose}>取消</button><button className="button primary" type="button" disabled={!tableName.trim() || !columns.length} onClick={submit}>创建表</button></div></footer>
+    <footer className="team-dialog-footer"><span className={error ? 'create-table-error' : 'create-table-hint'}>{error || '字段类型可直接输入或从下拉选择；主键仅建议设置一列。'}</span><div><button className="oc-button" type="button" onClick={onClose}>取消</button><button className="oc-button primary" type="button" disabled={!tableName.trim() || !columns.length} onClick={submit}>创建表</button></div></footer>
   </section></div>
 }

@@ -3,6 +3,7 @@ import userEvent from '@testing-library/user-event'
 import { expect, it, vi } from 'vitest'
 import { AuthProvider } from '../auth/AuthProvider'
 import type { AuthSession } from '../auth/types'
+import { UnifiedShellTestHarness } from '../layout/UnifiedShellTestHarness'
 import { LogsPage } from './LogsPage'
 import type { LogsClient, LogSession, LogSearchResult } from '../logs/client'
 
@@ -48,9 +49,11 @@ function fakeClient(): LogsClient {
 
 function renderLogs(client: LogsClient) {
   return render(
-    <AuthProvider initialSession={session()}>
-      <LogsPage client={client} />
-    </AuthProvider>,
+    <UnifiedShellTestHarness>
+      <AuthProvider initialSession={session()}>
+        <LogsPage client={client} />
+      </AuthProvider>
+    </UnifiedShellTestHarness>,
   )
 }
 
@@ -58,9 +61,9 @@ it('creates a log session, uploads a file, and searches indexed lines', async ()
   const client = fakeClient()
   renderLogs(client)
 
-  expect(await screen.findByRole('banner', {name: '日志工作台工具栏'})).toBeVisible()
+  expect(await screen.findByRole('button', {name: '新建会话'})).toBeVisible()
   expect(screen.getByRole('complementary', {name: '日志会话'})).toBeInTheDocument()
-  expect(screen.getByRole('main', {name: '日志工作区'})).toBeInTheDocument()
+  expect(screen.getByRole('status', {name: '先选择或新建日志会话'})).toBeInTheDocument()
   expect(screen.queryByText(/待迁移/)).not.toBeInTheDocument()
 
   await userEvent.click(screen.getByRole('button', {name: '新建会话'}))

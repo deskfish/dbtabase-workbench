@@ -80,9 +80,9 @@ export function ConnectionDialog({saved, sessionState = 'ready', onRetrySession,
       {sessionState === 'error' && <p className="form-error" role="alert">会话初始化失败，请点击「重试会话」。</p>}
       {error && <p className="form-error" role="alert">{error}</p>}
       <div className="dialog-actions">
-        <button type="button" className="button ghost" onClick={onCancel}>取消</button>
-        {sessionState === 'error' && onRetrySession && <button type="button" className="button ghost" onClick={onRetrySession}>重试会话</button>}
-        <button type="submit" className="button primary" disabled={busy || sessionState !== 'ready'}>{busy ? '正在连接…' : sessionState === 'loading' ? '正在初始化会话…' : sessionState === 'error' ? '会话未就绪' : editing ? '保存并连接' : '连接数据库'}</button>
+        <button type="button" className="oc-button" onClick={onCancel}>取消</button>
+        {sessionState === 'error' && onRetrySession && <button type="button" className="oc-button" onClick={onRetrySession}>重试会话</button>}
+        <button type="submit" className="oc-button primary" disabled={busy || sessionState !== 'ready'}>{busy ? '正在连接…' : sessionState === 'loading' ? '正在初始化会话…' : sessionState === 'error' ? '会话未就绪' : editing ? '保存并连接' : '连接数据库'}</button>
       </div>
     </form>
   </div>

@@ -1,6 +1,8 @@
 import { FormEvent, useState } from 'react'
 import { useLocation, useNavigate } from 'react-router-dom'
+import { BrandMark } from '../features/ui/BrandMark'
 import { useAuth } from './AuthProvider'
+import '../layout/AppShell.css'
 
 export function LoginPage() {
   const {login} = useAuth()
@@ -29,9 +31,14 @@ export function LoginPage() {
   return (
     <main className="login-page">
       <section className="login-card" aria-labelledby="login-heading">
-        <div className="login-kicker">OPS CONSOLE</div>
-        <h1 id="login-heading">登录 Ops Console</h1>
-        <p>统一管理数据库连接、工作台和后续日志能力。凭本地账号进入，不在浏览器保存密码。</p>
+        <div className="login-brand">
+          <BrandMark size={40} />
+          <div>
+            <h1 id="login-heading">Ops Console</h1>
+            <p className="login-subtitle">数据库运维平台 · MySQL / PostgreSQL / MongoDB / Redis</p>
+          </div>
+        </div>
+        <p className="login-copy">使用本地账号登录，统一管理数据库连接、日志与团队设置。</p>
         <form onSubmit={submit}>
           <label>用户名<input autoFocus autoComplete="username" value={username} onChange={(event) => setUsername(event.target.value)} /></label>
           <label>密码<input type="password" autoComplete="current-password" value={password} onChange={(event) => setPassword(event.target.value)} /></label>

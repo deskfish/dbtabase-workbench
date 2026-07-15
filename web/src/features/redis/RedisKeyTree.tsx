@@ -118,7 +118,7 @@ export function RedisKeyTree({
   return <div className="redis-key-tree">
     <div className="redis-tree-toolbar">
       <input className="search-input connection-search compact" style={{width: '100%'}} value={match} onChange={(event) => setMatch(event.target.value)} placeholder="MATCH pattern:*" aria-label="键匹配模式" />
-      <button type="button" className="button" style={{width: '100%'}} onClick={() => void load(0, false)} disabled={loading}>扫描</button>
+      <button type="button" className="oc-button" style={{width: '100%'}} onClick={() => void load(0, false)} disabled={loading}>扫描</button>
     </div>
     <div className="key-list object-tree redis-tree-body" role="tree" aria-label="Redis 键">
       {tree.map((node) => <RedisKeyTreeNodeRow
@@ -133,7 +133,7 @@ export function RedisKeyTree({
       {keys.length === 0 && !loading && <div className="empty-state compact">没有匹配的键</div>}
     </div>
     {cursor !== 0 && <div className="redis-tree-footer">
-      <button type="button" className="button" style={{flex: '1 1 auto'}} onClick={() => void load(cursor, true)} disabled={loading}>加载更多</button>
+      <button type="button" className="oc-button" style={{flex: '1 1 auto'}} onClick={() => void load(cursor, true)} disabled={loading}>加载更多</button>
     </div>}
   </div>
 }

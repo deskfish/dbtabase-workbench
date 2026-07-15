@@ -59,12 +59,13 @@ import { buildCreateDatabaseSQL, buildCreateTableSQL, buildDropDatabaseSQL, buil
 import { preserveResultColumns, resolveTableColumns } from '../features/table/tableColumns'
 import { SchemaWorkspace } from '../features/schema/SchemaWorkspace'
 import {SQL_GUIDE,sqlForSelectedTable} from '../features/editor/sqlTemplate'
+import { useCommandExtras, useUnifiedContext, useUnifiedRuntime, useUnifiedSidebar, useUnifiedStatus } from '../layout/UnifiedShellContext'
 
 export type WorkbenchAPI = Pick<APIClient,
   'createSession'|'connect'|'disconnect'|'listDatabases'|'switchDatabase'|'metadata'|'startQuery'|'queryResult'|'cancelQuery'|'exportCSV'|'beginTransaction'|'finishTransaction'|'mutate'|'tableDetail'|'previewSchema'|'executeSchema'|'capabilities'|'mongoFind'|'mongoAggregate'|'mongoMutate'|'mongoCollectionDetail'|'mongoCreateIndex'|'mongoDropIndex'|'redisScanKeys'|'redisGetKey'|'redisSaveKey'|'redisDeleteKey'|'redisSetTTL'|'redisCommands'
 > & ConnectionRegistryAPI
 
-export function App({api, sessionBootstrap, initialConnectionId = '', initialSQL = SQL_GUIDE}: {api:WorkbenchAPI; sessionBootstrap?:Promise<string>; initialConnectionId?:string; initialSQL?:string}) {
+export function App({api, sessionBootstrap, initialConnectionId = '', initialSQL = SQL_GUIDE, embedded = false}: {api:WorkbenchAPI; sessionBootstrap?:Promise<string>; initialConnectionId?:string; initialSQL?:string; embedded?: boolean}) {
   const initialQueryTab = useMemo(() => createQueryTab(initialSQL), [initialSQL])
   const [connectionId, setConnectionId] = useState(initialConnectionId)
   const [activeSavedId, setActiveSavedId] = useState('')
@@ -701,67 +702,142 @@ export function App({api, sessionBootstrap, initialConnectionId = '', initialSQL
     '--catalog-sidebar-width': `${catalogWidth}px`,
   } as CSSProperties
 
-  return <div className={`app-shell ${connectionBarCollapsed ? 'connection-collapsed' : ''} ${connected ? 'is-connected' : ''}`} style={shellStyle}>
+  const connectionStatus = (
+    <>
+      {connected && activeConnection && <span className="embedded-driver-label">{driverLabel(activeConnection.driver)}</span>}
+      <span className={`connection-pill ${connected ? 'connected' : ''}`}><span/>{connected ? '已连接' : '未连接'}{activeConnection ? ` · ${activeConnection.name}` : ''}</span>
+      {connectionNotice && <span className={`connection-notice ${connectionNotice.tone}`} role="status">{connectionNotice.message}</span>}
+    </>
+  )
+
+  const unifiedSidebar = embedded ? (
+    <div className="unified-db-sidebar">
+      <ConnectionSidebar
+        nickname={nickname || '访客'}
+        savedConnections={savedConnections}
+        teamConnections={teamConnections}
+        activeSavedId={activeSavedId}
+        connected={connected}
+        connectingId={connectingId}
+        activeDriver={activeConnection?.driver ?? ''}
+        activeDatabase={activeDatabase}
+        databases={databases}
+        switchingDatabase={switchingDatabase}
+        objects={objects}
+        connectionId={connectionId}
+        api={api as APIClient}
+        connectionBarCollapsed={connectionBarCollapsed}
+        onToggleConnectionBar={() => setConnectionBarCollapsed((value) => !value)}
+        catalogWidth={catalogWidth}
+        onCatalogWidthChange={setCatalogWidth}
+        onEditProfile={() => setProfileDialog('edit')}
+        onNewConnection={() => setConnectionDialog('new')}
+        onSelectConnection={(saved) => void selectSavedConnection(saved)}
+        onEditConnection={(saved) => setConnectionDialog(saved)}
+        onDeleteConnection={(saved) => void removeSavedConnection(saved)}
+        onShareConnectionToTeam={(saved) => void handleShareConnectionToTeam(saved)}
+        onCopyTeamConnection={(teamId) => void copyTeamConnectionToPersonal(teamId)}
+        onSwitchDatabase={(database) => void switchDatabase(database)}
+        onCreateDatabase={(saved) => void handleCreateDatabase(saved)}
+        onCreateTable={handleCreateTable}
+        onDeleteDatabase={(database) => void handleDeleteDatabase(database)}
+        onOpenTable={(table) => void loadTableData(table)}
+        onOpenTableStructure={openTableStructure}
+        onNewQuery={openQueryForTable}
+        onDeleteTable={(table) => void handleDeleteTable(table)}
+        onOpenRedisKey={openRedisKey}
+        onOpenRedisConsole={openRedisConsole}
+        selectedTableKey={selectedTableKey}
+        selectedRedisKey={selectedRedisKey}
+      />
+    </div>
+  ) : null
+
+  useUnifiedSidebar(unifiedSidebar, {
+    label: '数据库',
+    deps: [
+      embedded, nickname, savedConnections, teamConnections, activeSavedId, connected, connectingId,
+      activeConnection?.driver, activeDatabase, databases, switchingDatabase, objects, connectionId,
+      connectionBarCollapsed, catalogWidth, selectedTableKey, selectedRedisKey,
+    ],
+  })
+  useCommandExtras(embedded ? connectionStatus : null, [embedded, connected, activeConnection?.name, activeConnection?.driver, connectionNotice])
+  const databaseContext = embedded ? <div className="database-terminal-context">
+    <span className="terminal-context-kicker">RUNTIME</span><h3>{activeConnection?.name ?? '未选择连接'}</h3>
+    <dl><div><dt>状态</dt><dd>{connected ? '已连接' : '离线'}</dd></div><div><dt>驱动</dt><dd>{activeConnection ? driverLabel(activeConnection.driver) : '—'}</dd></div><div><dt>数据库</dt><dd>{activeDatabase || '—'}</dd></div><div><dt>事务</dt><dd>{transactionLabel}</dd></div><div><dt>对象</dt><dd>{objects.length}</dd></div></dl>
+  </div> : null
+  useUnifiedContext(databaseContext, {label: '数据库上下文', deps: [embedded, connected, activeConnection?.name, activeConnection?.driver, activeDatabase, transactionId, objects.length]})
+  useUnifiedRuntime(embedded ? {path: ['database', activeConnection?.name ?? 'disconnected', activeDatabase || 'workspace'], detail: connected ? driverLabel(activeConnection?.driver ?? '') : 'OFFLINE'} : null, [embedded, connected, activeConnection?.name, activeConnection?.driver, activeDatabase])
+  useUnifiedStatus(embedded ? (connectionNotice?.message || (activeQueryTab?.status === 'running' ? 'QUERY RUNNING' : connected ? `${transactionLabel} · ${rows.length} ROWS` : '等待数据库连接')) : null, [embedded, connectionNotice, activeQueryTab?.status, connected, transactionLabel, rows.length])
+
+  return <div className={`app-shell ${embedded ? 'embedded unified-workspace' : ''} ${connectionBarCollapsed ? 'connection-collapsed' : ''} ${connected ? 'is-connected' : ''}`} style={shellStyle}>
     <a className="skip-link" href="#sql-editor">跳到 SQL 编辑器</a>
-    <header className="topbar">
-      <div className="brand"><BrandMark size={32} /><div><h1>数据库管理</h1><p>Database Workbench · MySQL / PostgreSQL / MongoDB / Redis</p></div></div>
-      <div className="topbar-actions">
-        {connected && activeConnection && <span>{driverLabel(activeConnection.driver)}</span>}
-        <span className={`connection-pill ${connected?'connected':''}`}><span/>{connected?'已连接':'未连接'}{activeConnection?` · ${activeConnection.name}`:''}</span>
-        {connectionNotice && <span className={`connection-notice ${connectionNotice.tone}`} role="status">{connectionNotice.message}</span>}
-        <button
-          type="button"
-          className="topbar-profile"
-          aria-haspopup="menu"
-          aria-expanded={profileMenu ? 'true' : 'false'}
-          onClick={(event) => {
-            const rect = event.currentTarget.getBoundingClientRect()
-            setProfileMenu({x: rect.right, y: rect.bottom + 4})
-          }}
-        ><b>{(nickname||'访').slice(0,1)}</b>{nickname||'访客'} · 团队</button>
+    {!embedded && (
+      <header className="topbar">
+        <div className="brand"><BrandMark size={32} /><div><h1>数据库管理</h1><p>Database Workbench · MySQL / PostgreSQL / MongoDB / Redis</p></div></div>
+        <div className="topbar-actions">
+          {connectionStatus}
+          <button
+            type="button"
+            className="topbar-profile"
+            aria-haspopup="menu"
+            aria-expanded={profileMenu ? 'true' : 'false'}
+            onClick={(event) => {
+              const rect = event.currentTarget.getBoundingClientRect()
+              setProfileMenu({x: rect.right, y: rect.bottom + 4})
+            }}
+          ><b>{(nickname||'访').slice(0,1)}</b>{nickname||'访客'} · 团队</button>
+        </div>
+      </header>
+    )}
+    {embedded && (
+      <div className="embedded-connection-bar visually-hidden" aria-hidden="true">
+        {connectionStatus}
       </div>
-    </header>
+    )}
 
-    <ConnectionSidebar
-      nickname={nickname || '访客'}
-      savedConnections={savedConnections}
-      teamConnections={teamConnections}
-      activeSavedId={activeSavedId}
-      connected={connected}
-      connectingId={connectingId}
-      activeDriver={activeConnection?.driver ?? ''}
-      activeDatabase={activeDatabase}
-      databases={databases}
-      switchingDatabase={switchingDatabase}
-      objects={objects}
-      connectionId={connectionId}
-      api={api as APIClient}
-      connectionBarCollapsed={connectionBarCollapsed}
-      onToggleConnectionBar={() => setConnectionBarCollapsed((value) => !value)}
-      catalogWidth={catalogWidth}
-      onCatalogWidthChange={setCatalogWidth}
-      onEditProfile={() => setProfileDialog('edit')}
-      onNewConnection={() => setConnectionDialog('new')}
-      onSelectConnection={(saved) => void selectSavedConnection(saved)}
-      onEditConnection={(saved) => setConnectionDialog(saved)}
-      onDeleteConnection={(saved) => void removeSavedConnection(saved)}
-      onShareConnectionToTeam={(saved) => void handleShareConnectionToTeam(saved)}
-      onCopyTeamConnection={(teamId) => void copyTeamConnectionToPersonal(teamId)}
-      onSwitchDatabase={(database) => void switchDatabase(database)}
-      onCreateDatabase={(saved) => void handleCreateDatabase(saved)}
-      onCreateTable={handleCreateTable}
-      onDeleteDatabase={(database) => void handleDeleteDatabase(database)}
-      onOpenTable={(table) => void loadTableData(table)}
-      onOpenTableStructure={openTableStructure}
-      onNewQuery={openQueryForTable}
-      onDeleteTable={(table) => void handleDeleteTable(table)}
-      onOpenRedisKey={openRedisKey}
-      onOpenRedisConsole={openRedisConsole}
-      selectedTableKey={selectedTableKey}
-      selectedRedisKey={selectedRedisKey}
-    />
+    {!embedded && (
+      <ConnectionSidebar
+        nickname={nickname || '访客'}
+        savedConnections={savedConnections}
+        teamConnections={teamConnections}
+        activeSavedId={activeSavedId}
+        connected={connected}
+        connectingId={connectingId}
+        activeDriver={activeConnection?.driver ?? ''}
+        activeDatabase={activeDatabase}
+        databases={databases}
+        switchingDatabase={switchingDatabase}
+        objects={objects}
+        connectionId={connectionId}
+        api={api as APIClient}
+        connectionBarCollapsed={connectionBarCollapsed}
+        onToggleConnectionBar={() => setConnectionBarCollapsed((value) => !value)}
+        catalogWidth={catalogWidth}
+        onCatalogWidthChange={setCatalogWidth}
+        onEditProfile={() => setProfileDialog('edit')}
+        onNewConnection={() => setConnectionDialog('new')}
+        onSelectConnection={(saved) => void selectSavedConnection(saved)}
+        onEditConnection={(saved) => setConnectionDialog(saved)}
+        onDeleteConnection={(saved) => void removeSavedConnection(saved)}
+        onShareConnectionToTeam={(saved) => void handleShareConnectionToTeam(saved)}
+        onCopyTeamConnection={(teamId) => void copyTeamConnectionToPersonal(teamId)}
+        onSwitchDatabase={(database) => void switchDatabase(database)}
+        onCreateDatabase={(saved) => void handleCreateDatabase(saved)}
+        onCreateTable={handleCreateTable}
+        onDeleteDatabase={(database) => void handleDeleteDatabase(database)}
+        onOpenTable={(table) => void loadTableData(table)}
+        onOpenTableStructure={openTableStructure}
+        onNewQuery={openQueryForTable}
+        onDeleteTable={(table) => void handleDeleteTable(table)}
+        onOpenRedisKey={openRedisKey}
+        onOpenRedisConsole={openRedisConsole}
+        selectedTableKey={selectedTableKey}
+        selectedRedisKey={selectedRedisKey}
+      />
+    )}
 
-    <main className={`workspace ${activeTab?.kind === 'table' || activeTab?.kind === 'mongo-document' || activeTab?.kind === 'redis-key' ? 'mode-table' : 'mode-query'}`}>
+    <main className={`workspace ${activeTab?.kind === 'table' || activeTab?.kind === 'mongo-document' || activeTab?.kind === 'redis-key' ? 'mode-table' : 'mode-query'}${embedded && activeTab?.kind === 'query' ? ' unified-split' : ''}`}>
       <div className="status-rail" aria-hidden="true" />
       <nav className="tabbar" aria-label="工作区标签页" role="tablist">
         {tabs.map((tab) => <div className="tab-shell" key={tab.id}><button
@@ -885,16 +961,16 @@ export function App({api, sessionBootstrap, initialConnectionId = '', initialSQL
 
       {activeTab?.kind === 'query' && connected && (!activeConnection || isSqlDriver(activeConnection.driver)) && <>
         <div className="query-toolbar">
-          <button type="button" aria-label="执行 SQL" title="执行 SQL（Ctrl/Cmd + Enter）" className="button primary button-with-icon run-query-button" onClick={execute} disabled={!connected || status === 'running'}><Icon name="play" />运行 <kbd>⌘/Ctrl Enter</kbd></button>
+          <button type="button" aria-label="执行 SQL" title="执行 SQL（Ctrl/Cmd + Enter）" className="oc-button primary button-with-icon run-query-button" onClick={execute} disabled={!connected || status === 'running'}><Icon name="play" />运行 <kbd>⌘/Ctrl Enter</kbd></button>
           <label className="query-context">数据库<SelectControl className="query-select" ariaLabel="查询数据库" value={activeDatabase} disabled={!connected} options={databases.map(name=>({value:name,label:name}))} onChange={value=>void switchDatabase(value)}/></label>
           <label className="query-context">Schema<SelectControl className="query-select" ariaLabel="查询 Schema" value={querySchema||objects.find(x=>x.kind==='table')?.schema||''} options={[...new Set(objects.filter(x=>x.kind==='table').map(x=>x.schema||''))].map(name=>({value:name,label:name}))} onChange={setQuerySchema}/></label>
           <label className="query-context">表<SelectControl className="query-select table-query-select" ariaLabel="查询表" value={queryTable} options={[{value:'',label:'选择表'},...objects.filter(x=>x.kind==='table').map(x=>({value:qualifiedTableName(x),label:qualifiedTableName(x)}))]} onChange={value=>{setQueryTable(value);const table=objects.find(x=>x.kind==='table'&&qualifiedTableName(x)===value);if(table)updateTab(activeTab.id,{sql:sqlForSelectedTable(activeTab.sql,defaultSelectSQL(table, sqlDriverOrDefault(activeConnection?.driver ?? '')))})}}/></label>
           <span className="toolbar-separator" />
-          <button type="button" aria-label="停止查询" className="button ghost button-with-icon" disabled={!queryId || status !== 'running'} onClick={() => void api.cancelQuery(connectionId, queryId)}><Icon name="stop" />停止</button>
+          <button type="button" aria-label="停止查询" className="oc-button button-with-icon" disabled={!queryId || status !== 'running'} onClick={() => void api.cancelQuery(connectionId, queryId)}><Icon name="stop" />停止</button>
           <span className="toolbar-separator" />
-          <button type="button" className="button ghost" onClick={async () => transaction.open(await api.beginTransaction(connectionId))} disabled={!connected || Boolean(transactionId)}>开始事务</button>
-          <button type="button" className="button ghost" onClick={async () => {await api.finishTransaction(connectionId, transactionId, 'commit'); transaction.close()}} disabled={!transactionId}>提交</button>
-          <button type="button" className="button ghost" onClick={async () => {await api.finishTransaction(connectionId, transactionId, 'rollback'); transaction.close()}} disabled={!transactionId}>回滚</button>
+          <button type="button" className="oc-button" onClick={async () => transaction.open(await api.beginTransaction(connectionId))} disabled={!connected || Boolean(transactionId)}>开始事务</button>
+          <button type="button" className="oc-button" onClick={async () => {await api.finishTransaction(connectionId, transactionId, 'commit'); transaction.close()}} disabled={!transactionId}>提交</button>
+          <button type="button" className="oc-button" onClick={async () => {await api.finishTransaction(connectionId, transactionId, 'rollback'); transaction.close()}} disabled={!transactionId}>回滚</button>
           <span className={`transaction-state ${transactionId ? 'open' : ''}`}>{transactionLabel}</span>
         </div>
         <section id="sql-editor" className="editor-pane" aria-label="SQL 编辑区">
@@ -926,9 +1002,9 @@ export function App({api, sessionBootstrap, initialConnectionId = '', initialSQL
           <h3>先连接数据库，再开始工作</h3>
           <p>选择已有连接，或者创建一个新的个人连接；团队共享连接也可以直接复制使用。</p>
           <div className="workspace-onboarding-actions">
-            <button className="button primary" onClick={()=>document.querySelector<HTMLInputElement>('[data-connection-search]')?.focus()}>选择连接</button>
-            <button className="button" onClick={()=>setConnectionDialog('new')}>新建连接</button>
-            <button className="button" onClick={()=>document.querySelector<HTMLButtonElement>('[data-team-connections]')?.click()}>团队连接</button>
+            <button className="oc-button primary" onClick={()=>document.querySelector<HTMLInputElement>('[data-connection-search]')?.focus()}>选择连接</button>
+            <button className="oc-button" onClick={()=>setConnectionDialog('new')}>新建连接</button>
+            <button className="oc-button" onClick={()=>document.querySelector<HTMLButtonElement>('[data-team-connections]')?.click()}>导入团队连接</button>
           </div>
         </div>
       </section>}

@@ -227,9 +227,9 @@ export function TableView({
         {activeFilterCount > 0 && <span className="table-filter-badge">{activeFilterCount} 条筛选</span>}
         {sort && <span className="table-sort-badge">{sort.column} {sort.direction === 'asc' ? '↑' : '↓'}</span>}
         <span className="table-toolbar-spacer" />
-        <div className="column-menu-wrap"><button type="button" className="button compact" onClick={()=>setShowColumns(v=>!v)}>显示列</button>{showColumns&&<div className="column-menu">{columns.map(c=><label key={c.name}><input type="checkbox" checked={!hiddenColumns.has(c.name)} onChange={()=>setHiddenColumns(current=>{const next=new Set(current);if(next.has(c.name))next.delete(c.name);else next.add(c.name);return next})}/>{c.name}</label>)}</div>}</div>
-        <button type="button" className="button compact" onClick={()=>setDense(v=>!v)}>密度：{dense?'紧凑':'标准'}</button>
-        <button type="button" className="button ghost compact button-with-icon" disabled={rows.length === 0} onClick={onExport}><Icon name="download" />导出 CSV</button>
+        <div className="column-menu-wrap"><button type="button" className="oc-button compact" onClick={()=>setShowColumns(v=>!v)}>显示列</button>{showColumns&&<div className="column-menu">{columns.map(c=><label key={c.name}><input type="checkbox" checked={!hiddenColumns.has(c.name)} onChange={()=>setHiddenColumns(current=>{const next=new Set(current);if(next.has(c.name))next.delete(c.name);else next.add(c.name);return next})}/>{c.name}</label>)}</div>}</div>
+        <button type="button" className="oc-button compact" onClick={()=>setDense(v=>!v)}>密度：{dense?'紧凑':'标准'}</button>
+        <button type="button" className="oc-button compact button-with-icon" disabled={rows.length === 0} onClick={onExport}><Icon name="download" />导出 CSV</button>
       </div>
 
       {showFilter && <TableFilterBuilder

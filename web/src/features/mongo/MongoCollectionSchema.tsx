@@ -35,7 +35,7 @@ export function MongoCollectionSchema({
       <input value={indexField} onChange={(e) => setIndexField(e.target.value)} placeholder="索引字段" aria-label="索引字段" style={{height: 30, padding: '0 8px'}} />
       <input value={indexName} onChange={(e) => setIndexName(e.target.value)} placeholder="索引名（可选）" aria-label="索引名" style={{height: 30, padding: '0 8px'}} />
       <label style={{display: 'flex', alignItems: 'center', gap: 6, fontSize: 11}}><input type="checkbox" checked={indexUnique} onChange={(e) => setIndexUnique(e.target.checked)} />唯一</label>
-      <button type="button" className="button primary" onClick={async () => {
+      <button type="button" className="oc-button primary" onClick={async () => {
         await api.mongoCreateIndex(connectionId, collection, {[indexField]: 1}, indexUnique, indexName || undefined)
         void load()
       }}>新建索引</button>
@@ -50,7 +50,7 @@ export function MongoCollectionSchema({
       <h3 style={{fontSize: 12, margin: '0 0 8px'}}>索引</h3>
       <table className="result-grid">
         <thead><tr><th>名称</th><th>字段</th><th>唯一</th><th /></tr></thead>
-        <tbody>{detail?.indexes.map((index) => <tr key={index.name}><td>{index.name}</td><td>{index.keys.join(', ')}</td><td>{index.unique ? '是' : '否'}</td><td>{index.name !== '_id_' && <button type="button" className="button danger" onClick={async () => { await api.mongoDropIndex(connectionId, collection, index.name); void load() }}>删除</button>}</td></tr>)}</tbody>
+        <tbody>{detail?.indexes.map((index) => <tr key={index.name}><td>{index.name}</td><td>{index.keys.join(', ')}</td><td>{index.unique ? '是' : '否'}</td><td>{index.name !== '_id_' && <button type="button" className="oc-button danger" onClick={async () => { await api.mongoDropIndex(connectionId, collection, index.name); void load() }}>删除</button>}</td></tr>)}</tbody>
       </table>
     </div>
   </div>

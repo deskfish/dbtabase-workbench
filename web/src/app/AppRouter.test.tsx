@@ -1,4 +1,4 @@
-import { render, screen } from '@testing-library/react'
+import { render, screen, within } from '@testing-library/react'
 import { MemoryRouter } from 'react-router-dom'
 import { expect, it } from 'vitest'
 import { AppRouter } from './AppRouter'
@@ -29,12 +29,15 @@ it('redirects guests to login and authenticated users to connections', async () 
   guest.unmount()
 
   renderRouter({session: fakeSession()}, ['/'])
-  expect(await screen.findByRole('heading', {name: '连接中心'})).toBeVisible()
+  const modules = await screen.findByRole('navigation', {name: '模块'})
+  expect(within(modules).getByRole('link', {name: '连接中心'})).toHaveAttribute('aria-current', 'page')
+  expect(screen.getByRole('heading', {name: 'Connections'})).toBeVisible()
 })
 
 it('keeps one global navigation and marks the current route', async () => {
   renderRouter({session: fakeSession()}, ['/connections'])
-  expect(await screen.findByRole('navigation')).toBeInTheDocument()
-  expect(screen.getAllByRole('main')).toHaveLength(1)
-  expect(screen.getByRole('link', {name: '连接中心'})).toHaveAttribute('aria-current', 'page')
+  const modules = await screen.findByRole('navigation', {name: '模块'})
+  expect(modules).toBeInTheDocument()
+  expect(document.getElementById('main-content')).toBeTruthy()
+  expect(within(modules).getByRole('link', {name: '连接中心'})).toHaveAttribute('aria-current', 'page')
 })

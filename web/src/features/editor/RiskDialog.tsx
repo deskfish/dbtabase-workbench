@@ -12,8 +12,8 @@ export function RiskDialog({risk, onCancel, onConfirm}: {risk:QueryRisk; onCance
         <input autoFocus value={target} onChange={(event) => setTarget(event.target.value)} />
       </label>}
       <div className="dialog-actions">
-        <button type="button" className="button ghost" onClick={onCancel}>取消</button>
-        <button type="button" className="button danger" disabled={risk.level === 'type_target' && target !== risk.target} onClick={() => onConfirm(target)}>确认执行</button>
+        <button type="button" className="oc-button" onClick={onCancel}>取消</button>
+        <button type="button" className="oc-button danger" disabled={risk.level === 'type_target' && target !== risk.target} onClick={() => onConfirm(target)}>确认执行</button>
       </div>
     </section>
   </div>

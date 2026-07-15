@@ -28,8 +28,8 @@ export function ProfileDialog({initialNickname = '', initialTheme = 'slate', onC
         <SelectControl ariaLabel="界面配色" value={theme} options={THEME_OPTIONS.map((item)=>({value:item.id,label:item.label}))} onChange={(value)=>setTheme(value as ThemeId)}/>
       </label>
       <div className="dialog-actions">
-        {onCancel && <button type="button" className="button ghost" onClick={onCancel}>取消</button>}
-        <button type="submit" className="button primary" disabled={!nickname.trim()}>保存</button>
+        {onCancel && <button type="button" className="oc-button" onClick={onCancel}>取消</button>}
+        <button type="submit" className="oc-button primary" disabled={!nickname.trim()}>保存</button>
       </div>
     </form>
   </div>

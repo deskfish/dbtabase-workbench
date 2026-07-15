@@ -53,6 +53,41 @@ it('renders saved connections and triggers selection', async () => {
   expect(onSelect).toHaveBeenCalledWith(saved[0])
 })
 
+it('guides an empty personal connection list toward creating its first connection', async () => {
+  const onNewConnection = vi.fn()
+  render(<ConnectionSidebar
+    nickname="小明"
+    savedConnections={[]}
+    teamConnections={[]}
+    activeSavedId=""
+    connected={false}
+    connectingId=""
+    activeDriver=""
+    activeDatabase=""
+    databases={[]}
+    switchingDatabase={false}
+    objects={[]}
+    onEditProfile={() => {}}
+    onNewConnection={onNewConnection}
+    onSelectConnection={() => {}}
+    onEditConnection={() => {}}
+    onDeleteConnection={() => {}}
+    onShareConnectionToTeam={() => {}}
+    onCopyTeamConnection={() => {}}
+    onSwitchDatabase={() => {}}
+    onCreateDatabase={() => {}}
+    onCreateTable={() => {}}
+    onDeleteDatabase={() => {}}
+    onOpenTable={() => {}}
+    onOpenTableStructure={() => {}}
+    onNewQuery={() => {}}
+    onDeleteTable={() => {}}
+  />)
+
+  await userEvent.click(screen.getByRole('button', {name: '创建第一个连接'}))
+  expect(onNewConnection).toHaveBeenCalledTimes(1)
+})
+
 it('filters personal connections and exposes selected connection actions in the fixed footer', async () => {
   const user = userEvent.setup()
   const onEdit = vi.fn()

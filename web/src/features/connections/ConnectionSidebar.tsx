@@ -157,8 +157,12 @@ export function ConnectionSidebar({
         <Icon name="search" />
         <input type="search" data-connection-search aria-label="搜索个人连接" placeholder="搜索个人连接 / 主机 / 数据库" value={connectionSearch} onChange={(event) => setConnectionSearch(event.target.value)} />
       </label>
-      <div className="connection-list" role="list">
-        {savedConnections.length === 0 && <div className="empty-state compact">还没有保存的连接，请使用下方工具栏新建</div>}
+      <div className={`connection-list ${savedConnections.length === 0 ? 'is-empty' : ''}`} role="list">
+        {savedConnections.length === 0 && <div className="connection-empty-state">
+          <strong>从一个连接开始</strong>
+          <p>保存 MySQL、PostgreSQL、MongoDB 或 Redis 连接后，即可在这里快速切换。</p>
+          <button type="button" className="oc-button primary" onClick={onNewConnection}>创建第一个连接</button>
+        </div>}
         {savedConnections.length > 0 && visibleConnections.length === 0 && <div className="empty-state compact">没有匹配的个人连接</div>}
         {visibleConnections.map((saved) => {
           const active = saved.id === activeSavedId
@@ -238,7 +242,7 @@ export function ConnectionSidebar({
     <div className="object-panel">
       <div className="panel-heading">
         <div><span>对象</span><small>{`${objectCountLabel} · ${activeDatabase}`}</small></div>
-        {isRedisDriver(activeDriver) && onOpenRedisConsole && <button type="button" className="button compact" onClick={onOpenRedisConsole}>命令台</button>}
+        {isRedisDriver(activeDriver) && onOpenRedisConsole && <button type="button" className="oc-button compact" onClick={onOpenRedisConsole}>命令台</button>}
       </div>
       {switchingDatabase
         ? <div className="empty-state compact">正在切换数据库…</div>

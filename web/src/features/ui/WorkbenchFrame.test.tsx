@@ -3,21 +3,25 @@ import userEvent from '@testing-library/user-event'
 import {describe, expect, it, vi} from 'vitest'
 import {EmptyState} from './EmptyState'
 import {StatusBadge} from './StatusBadge'
-import {WorkbenchContent, WorkbenchFrame, WorkbenchSidebar, WorkbenchToolbar} from './WorkbenchFrame'
+import {WorkbenchContent, WorkbenchFrame, WorkbenchPaneToolbar, WorkbenchSidebar} from './WorkbenchFrame'
 
 describe('WorkbenchFrame', () => {
-  it('labels the toolbar, sidebar, and workspace regions', () => {
+  it('labels the pane toolbar, sidebar, and workspace regions', () => {
     render(
       <WorkbenchFrame sidebarOpen={false} onSidebarOpenChange={() => undefined}>
-        <WorkbenchToolbar title="日志工作台" subtitle="个人" />
         <WorkbenchSidebar label="日志会话">sessions</WorkbenchSidebar>
-        <WorkbenchContent label="日志工作台工作区">workspace</WorkbenchContent>
+        <WorkbenchContent label="日志工作台工作区">
+          <WorkbenchPaneToolbar>
+            <button type="button">新建</button>
+          </WorkbenchPaneToolbar>
+          workspace
+        </WorkbenchContent>
       </WorkbenchFrame>,
     )
 
-    expect(screen.getByRole('banner', {name: '日志工作台工具栏'})).toBeInTheDocument()
     expect(screen.getByRole('complementary', {name: '日志会话'})).toBeInTheDocument()
     expect(screen.getByRole('main', {name: '日志工作台工作区'})).toBeInTheDocument()
+    expect(screen.getByRole('button', {name: '新建'})).toBeInTheDocument()
   })
 
   it('opens and closes the responsive sidebar', async () => {
@@ -25,9 +29,11 @@ describe('WorkbenchFrame', () => {
     const onSidebarOpenChange = vi.fn()
     render(
       <WorkbenchFrame sidebarOpen onSidebarOpenChange={onSidebarOpenChange}>
-        <WorkbenchToolbar title="连接中心" onOpenSidebar={() => onSidebarOpenChange(true)} />
         <WorkbenchSidebar label="连接筛选">filters</WorkbenchSidebar>
-        <WorkbenchContent label="连接列表">connections</WorkbenchContent>
+        <WorkbenchContent label="连接列表">
+          <WorkbenchPaneToolbar onOpenSidebar={() => onSidebarOpenChange(true)} />
+          connections
+        </WorkbenchContent>
       </WorkbenchFrame>,
     )
 

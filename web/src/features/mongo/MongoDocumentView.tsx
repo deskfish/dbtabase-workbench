@@ -59,7 +59,7 @@ export function MongoDocumentView({
     <div className="table-view-head">
       <div className="table-view-toolbar">
         <input className="search-input" style={{minWidth: 220, flex: 1}} value={filter} onChange={(e) => setFilter(e.target.value)} placeholder='Filter JSON: {"status":"paid"}' aria-label="MongoDB 筛选" />
-        <button type="button" className="button" onClick={() => void load()} disabled={status === 'running'}>筛选</button>
+        <button type="button" className="oc-button" onClick={() => void load()} disabled={status === 'running'}>筛选</button>
         {result?.total != null && <span className="table-filter-badge">共 {result.total} 文档</span>}
       </div>
     </div>
@@ -79,12 +79,12 @@ export function MongoDocumentView({
         <h3 className="mongo-document-editor-title">文档 JSON</h3>
         <textarea value={docJson} onChange={(e) => setDocJson(e.target.value)} aria-label="文档 JSON" className="mongo-document-textarea" />
         <div className="mongo-document-actions">
-          <button type="button" className="button primary" disabled={!selectedDoc} onClick={async () => {
+          <button type="button" className="oc-button primary" disabled={!selectedDoc} onClick={async () => {
             if (!selectedDoc) return
             await api.mongoMutate(connectionId, {database, collection, operation: 'replace', filter: JSON.stringify({_id: selectedDoc._id}), document: docJson})
             void load()
           }}>保存</button>
-          <button type="button" className="button danger" disabled={!selectedDoc} onClick={async () => {
+          <button type="button" className="oc-button danger" disabled={!selectedDoc} onClick={async () => {
             if (!selectedDoc || !window.confirm('确认删除该文档？')) return
             await api.mongoMutate(connectionId, {database, collection, operation: 'delete', filter: JSON.stringify({_id: selectedDoc._id})})
             void load()

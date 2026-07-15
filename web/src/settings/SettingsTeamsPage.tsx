@@ -1,11 +1,11 @@
-import {useEffect, useState} from 'react'
+import {useEffect, useMemo, useState} from 'react'
 import {useOutletContext} from 'react-router-dom'
 import {ConfirmDialog} from '../features/ui/ConfirmDialog'
-import {DataGrid} from '../features/ui/DataGrid'
 import {EmptyState} from '../features/ui/EmptyState'
 import {FormDialog} from '../features/ui/FormDialog'
-import {StatusBadge} from '../features/ui/StatusBadge'
+import {TerminalInlineAction, TerminalStatus} from '../features/ui/TerminalPrimitives'
 import {TextField} from '../features/ui/TextField'
+import {useUnifiedContext, useUnifiedSidebar} from '../layout/UnifiedShellContext'
 import {CreateTeamDialog} from './CreateTeamDialog'
 import {settingsErrorMessage} from './errors'
 import {manageableTeams} from './shared'
@@ -30,8 +30,11 @@ export function SettingsTeamsPage({client: clientOverride}: {client?: SettingsCl
   const [pendingAction, setPendingAction] = useState<PendingAction | null>(null)
   const [managingTeam, setManagingTeam] = useState<TeamSummary | null>(null)
   const [savingMembers, setSavingMembers] = useState(false)
+  const [selectedTeamId, setSelectedTeamId] = useState('')
 
-  const managedTeams = manageableTeams(teams, isSystemAdmin)
+  const managedTeams = useMemo(() => manageableTeams(teams, isSystemAdmin), [teams, isSystemAdmin])
+  const selectedTeam = managedTeams.find((team) => team.id === selectedTeamId) ?? managedTeams[0] ?? null
+  const selectedMembers = useMemo(() => selectedTeam ? teamMembers[selectedTeam.id] ?? [] : [], [selectedTeam, teamMembers])
 
   useEffect(() => {
     const hash = window.location.hash
@@ -39,6 +42,37 @@ export function SettingsTeamsPage({client: clientOverride}: {client?: SettingsCl
     const target = document.querySelector(hash)
     target?.scrollIntoView({behavior: 'smooth', block: 'start'})
   }, [teams])
+
+  useEffect(() => {
+    if (!selectedTeamId && managedTeams[0]) setSelectedTeamId(managedTeams[0].id)
+    else if (selectedTeamId && !managedTeams.some((team) => team.id === selectedTeamId)) setSelectedTeamId(managedTeams[0]?.id ?? '')
+  }, [managedTeams, selectedTeamId])
+
+  const teamDirectory = useMemo(() => (
+    <div className="settings-team-directory">
+      <div className="settings-rail-kicker">TEAM DIRECTORY</div>
+      {isSystemAdmin && <TerminalInlineAction tone="success" onClick={() => setShowCreateTeam(true)}>新建团队</TerminalInlineAction>}
+      <div className="settings-team-directory-list">
+        {managedTeams.map((team) => {
+          const members = teamMembers[team.id] ?? []
+          return <button key={team.id} type="button" aria-pressed={selectedTeam?.id === team.id} onClick={() => setSelectedTeamId(team.id)}><span><TerminalStatus tone={selectedTeam?.id === team.id ? 'success' : 'neutral'}>{team.name}</TerminalStatus><small>{members.length} members · shared resources</small></span></button>
+        })}
+      </div>
+      <div className="settings-rail-summary"><span>TEAM HEALTH</span><TerminalStatus tone="success">{managedTeams.length} active teams</TerminalStatus><TerminalStatus>{Object.values(teamMembers).flat().length} memberships</TerminalStatus></div>
+    </div>
+  ), [isSystemAdmin, managedTeams, selectedTeam?.id, teamMembers])
+  useUnifiedSidebar(teamDirectory, {label: '团队目录', deps: [isSystemAdmin, managedTeams, selectedTeam?.id, teamMembers]})
+
+  const teamResourceContext = selectedTeam ? (
+    <div className="settings-resource-ledger">
+      <span className="settings-context-kicker">RESOURCE LEDGER</span>
+      <h3>{selectedTeam.name} / access surface</h3>
+      <section><header><span>MEMBERS</span><strong>{selectedMembers.length}</strong></header>{selectedMembers.map((member) => <p key={member.user.id}>{member.user.displayName || member.user.username}<small>{member.role}</small></p>)}</section>
+      <section><header><span>SHARED ACCESS</span><strong>{selectedTeam.role === 'admin' ? 'ADMIN' : 'MEMBER'}</strong></header><p>Connections & log sessions<small>team namespace</small></p></section>
+      {isSystemAdmin && <div className="settings-danger-zone"><span>DANGER ZONE</span><TerminalInlineAction tone="danger" disabled={teamPending[selectedTeam.id]} onClick={() => setPendingAction({type: 'delete-team', team: selectedTeam})}>删除</TerminalInlineAction></div>}
+    </div>
+  ) : null
+  useUnifiedContext(teamResourceContext, {label: '团队资源', deps: [selectedTeam?.id, selectedMembers, isSystemAdmin, teamPending[selectedTeam?.id ?? '']]})
 
   async function submitTeam(name: string) {
     setCreatingTeam(true)
@@ -131,42 +165,23 @@ export function SettingsTeamsPage({client: clientOverride}: {client?: SettingsCl
     }
   }
 
-  function renderTeamRow(team: TeamSummary) {
-    const members = teamMembers[team.id] ?? []
-    const canManageMembers = isSystemAdmin || team.role === 'admin'
-
-    return (
-      <tr key={team.id} id={`team-${team.id}`}>
-        <th scope="row">{team.name}</th>
-        <td>{members.length}</td>
-        <td><StatusBadge tone={team.role === 'admin' ? 'info' : 'neutral'}>{team.role === 'admin' ? '团队管理员' : '成员'}</StatusBadge></td>
-        <td>共享连接与日志会话</td>
-        <td><div className="settings-row-actions">
-          {canManageMembers && <button className="oc-button primary" type="button" onClick={() => setManagingTeam(team)}>维护成员</button>}
-          {canManageMembers && <button className="oc-button" type="button" onClick={() => { setEditingTeamId(team.id); setTeamDrafts((current) => ({...current, [team.id]: team.name})) }}>重命名</button>}
-          {isSystemAdmin && <button className="oc-button danger" type="button" disabled={teamPending[team.id]} onClick={() => setPendingAction({type: 'delete-team', team})}>删除</button>}
-        </div></td>
-      </tr>
-    )
-  }
-
   const editingTeam = managedTeams.find((team) => team.id === editingTeamId) ?? null
 
   return (
     <>
       <section className="settings-management-workspace" aria-labelledby="teams-heading">
-        <header className="settings-workspace-head">
-          <div><strong id="teams-heading">团队</strong><span>成员关系、共享连接与日志资源</span></div>
-          {isSystemAdmin && (
-            <button className="oc-button primary" type="button" onClick={() => setShowCreateTeam(true)}>
-              新建团队
-            </button>
-          )}
+        <header className="settings-page-toolbar">
+          <div>
+            <h2 id="teams-heading">{selectedTeam?.name ?? '团队'}</h2>
+            <p>成员关系、角色与资源访问边界</p>
+          </div>
+          {selectedTeam && (isSystemAdmin || selectedTeam.role === 'admin') && <div className="settings-toolbar-actions"><TerminalInlineAction onClick={() => setManagingTeam(selectedTeam)}>成员</TerminalInlineAction><TerminalInlineAction tone="info" onClick={() => { setEditingTeamId(selectedTeam.id); setTeamDrafts((current) => ({...current, [selectedTeam.id]: selectedTeam.name})) }}>重命名</TerminalInlineAction></div>}
         </header>
-        <DataGrid label="团队列表" loading={false} empty={managedTeams.length === 0 ? <EmptyState title="暂无可管理团队" description={isSystemAdmin ? '新建团队后即可分配成员与共享资源。' : '你当前没有团队管理员权限。'} /> : undefined}>
-          <thead><tr><th>团队</th><th>成员</th><th>我的角色</th><th>资源</th><th aria-label="操作" /></tr></thead>
-          <tbody>{managedTeams.map(renderTeamRow)}</tbody>
-        </DataGrid>
+        {selectedTeam ? <div className="settings-membership-workspace">
+          <div className="settings-workspace-tabs"><button type="button" aria-current="page">MEMBERS <strong>{selectedMembers.length}</strong></button><button type="button">ACCESS POLICY</button><button type="button">ACTIVITY</button></div>
+          <div className="settings-terminal-table-wrap"><table className="settings-terminal-table" aria-label="团队成员"><thead><tr><th>MEMBER</th><th>LOGIN</th><th>TEAM ROLE</th><th>STATE</th></tr></thead><tbody>{selectedMembers.map((member) => <tr key={member.user.id}><th scope="row">{member.user.displayName || member.user.username}</th><td><code>{member.user.username}</code></td><td>{member.role === 'admin' ? 'TEAM ADMIN' : 'MEMBER'}</td><td><TerminalStatus tone={member.user.disabled ? 'warning' : 'success'}>{member.user.disabled ? 'DISABLED' : 'ACTIVE'}</TerminalStatus></td></tr>)}</tbody></table></div>
+          <div className="settings-membership-note">ROLE NOTE / Team admins can manage membership and shared resources.</div>
+        </div> : <div className="settings-empty-workspace"><EmptyState title="暂无可管理团队" description={isSystemAdmin ? '新建团队后即可分配成员与共享资源。' : '你当前没有团队管理员权限。'} /></div>}
       </section>
 
       {editingTeam && (

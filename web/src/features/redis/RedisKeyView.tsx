@@ -46,9 +46,9 @@ export function RedisKeyView({
       {detail && detail.ttl >= 0 && <span className="table-sort-badge">TTL {detail.ttl}s</span>}
       <div className="table-toolbar-spacer" />
       <input value={ttl} onChange={(e) => setTTL(e.target.value)} placeholder="TTL 秒" aria-label="TTL" style={{width: 100, height: 30, padding: '0 8px'}} />
-      <button type="button" className="button" onClick={async () => { await api.redisSetTTL(connectionId, keyName, Number(ttl)); void load() }}>设置 TTL</button>
-      <button type="button" className="button danger" onClick={async () => { if (window.confirm(`删除键 ${keyName}？`)) { await api.redisDeleteKey(connectionId, keyName) } }}>删除</button>
-      <button type="button" className="button primary" onClick={() => void save()}>保存</button>
+      <button type="button" className="oc-button" onClick={async () => { await api.redisSetTTL(connectionId, keyName, Number(ttl)); void load() }}>设置 TTL</button>
+      <button type="button" className="oc-button danger" onClick={async () => { if (window.confirm(`删除键 ${keyName}？`)) { await api.redisDeleteKey(connectionId, keyName) } }}>删除</button>
+      <button type="button" className="oc-button primary" onClick={() => void save()}>保存</button>
     </div>
     <div className="editor-pane">
       <pre style={{margin: 0, padding: 16, color: 'var(--muted)', fontSize: 11}}>{keyName}</pre>

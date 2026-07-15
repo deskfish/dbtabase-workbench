@@ -1,7 +1,7 @@
 import {useState} from 'react'
-import {NavLink, Navigate, Outlet, useLocation, useOutletContext} from 'react-router-dom'
+import {Navigate, Outlet, useLocation, useOutletContext} from 'react-router-dom'
 import {useAuth} from '../auth/AuthProvider'
-import {WorkbenchContent, WorkbenchFrame, WorkbenchSidebar, WorkbenchToolbar} from '../features/ui/WorkbenchFrame'
+import {useUnifiedContext, useUnifiedRuntime, useUnifiedStatus} from '../layout/UnifiedShellContext'
 import {settingsClient, type SettingsClient} from './client'
 import {manageableTeams} from './shared'
 import type {SettingsOutletContext} from './types'
@@ -9,20 +9,16 @@ import {useSettingsData} from './useSettingsData'
 import '../layout/AppShell.css'
 import './SettingsLayout.css'
 
-const tabs = [
-  {to: '/settings/profile', label: '个人资料', adminOnly: false, teamAdminOnly: false},
-  {to: '/settings/teams', label: '团队', adminOnly: false, teamAdminOnly: true},
-  {to: '/settings/users', label: '用户', adminOnly: true, teamAdminOnly: false},
-]
-
 export function SettingsLayout({client = settingsClient}: {client?: SettingsClient}) {
   const {session} = useAuth()
-  const [success, setSuccess] = useState('')
-  const [sidebarOpen, setSidebarOpen] = useState(false)
   const location = useLocation()
+  const [success, setSuccess] = useState('')
   const data = useSettingsData(session, client)
   const isSystemAdmin = session?.user.systemRole === 'admin'
   const canManageTeams = isSystemAdmin || manageableTeams(data.teams, false).length > 0
+  const section = location.pathname.split('/').pop() || 'profile'
+  useUnifiedRuntime({path: ['settings', section], detail: isSystemAdmin ? 'SYSTEM ADMIN' : canManageTeams ? 'TEAM ADMIN' : 'MEMBER'}, [section, isSystemAdmin, canManageTeams])
+  useUnifiedStatus(data.error || success || (data.state === 'loading' ? '正在同步权限…' : `READY · ${data.teams.length} TEAMS`), [data.error, success, data.state, data.teams.length])
 
   if (!session) return null
 
@@ -36,28 +32,22 @@ export function SettingsLayout({client = settingsClient}: {client?: SettingsClie
     setSuccess,
   }
 
-  const currentTab = tabs.find((tab) => location.pathname.startsWith(tab.to))?.label ?? '个人资料'
-
   return (
-    <section className="ops-workbench-page settings-workbench-page">
-      <WorkbenchFrame sidebarOpen={sidebarOpen} onSidebarOpenChange={setSidebarOpen}>
-        <WorkbenchToolbar title="设置" subtitle={currentTab} onOpenSidebar={() => setSidebarOpen(true)} />
-        <WorkbenchSidebar label="设置分区">
-          <nav className="settings-workbench-nav" aria-label="设置导航">
-            {tabs.map((tab) => {
-              if (tab.adminOnly && !isSystemAdmin) return null
-              if (tab.teamAdminOnly && !canManageTeams) return null
-              return <NavLink key={tab.to} to={tab.to} onClick={() => setSidebarOpen(false)}>{tab.label}<span aria-hidden="true">{tab.label === '个人资料' ? '账号与归属' : tab.label === '团队' ? '成员与资源' : '登录与权限'}</span></NavLink>
-            })}
-          </nav>
-        </WorkbenchSidebar>
-        <WorkbenchContent label="设置工作区">
+    <section className="product-workbench-page settings-workbench-page">
+      {section === 'profile' && <SettingsProfileContext name={session.user.displayName || session.user.username} role={session.user.systemRole} teamCount={data.teams.length} />}
+      <div className="unified-page-frame">
+        <div className="unified-page-body settings-page-body">
           {(success || data.error) && <div className="settings-feedback">{success && <p className="form-success" role="status">{success}</p>}{data.error && <p className="form-error" role="alert">{data.error}</p>}</div>}
           <Outlet context={outlet} />
-        </WorkbenchContent>
-      </WorkbenchFrame>
+        </div>
+      </div>
     </section>
   )
+}
+
+function SettingsProfileContext({name, role, teamCount}: {name: string; role: string; teamCount: number}) {
+  useUnifiedContext(<div className="settings-terminal-context"><span>IDENTITY</span><h3>{name}</h3><dl><div><dt>系统角色</dt><dd>{role}</dd></div><div><dt>团队</dt><dd>{teamCount}</dd></div><div><dt>当前区域</dt><dd>profile</dd></div></dl></div>, {label: '身份与权限', deps: [name, role, teamCount]})
+  return null
 }
 
 export function SettingsIndexRedirect() {

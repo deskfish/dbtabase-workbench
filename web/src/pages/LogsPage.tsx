@@ -7,8 +7,8 @@ import {FormDialog} from '../features/ui/FormDialog'
 import {SelectControl} from '../features/ui/SelectControl'
 import {StatusBadge, type StatusTone} from '../features/ui/StatusBadge'
 import {TextField} from '../features/ui/TextField'
-import {WorkbenchContent, WorkbenchFrame, WorkbenchSidebar, WorkbenchToolbar} from '../features/ui/WorkbenchFrame'
 import {WorkspaceTabs} from '../features/ui/WorkspaceTabs'
+import {useUnifiedContext, useUnifiedRuntime, useUnifiedSidebar, useUnifiedStatus} from '../layout/UnifiedShellContext'
 import {logsClient, type LogEntry, type LogScope, type LogSession, type LogsClient, type RemoteLogEntry, type SSHLogConnection} from '../logs/client'
 import './LogsPage.css'
 
@@ -106,7 +106,6 @@ export function LogsPage({client = logsClient}: {client?: LogsClient}) {
   const [tailNodeName, setTailNodeName] = useState('')
   const [workspace, setWorkspace] = useState<LogsWorkspace>('search')
   const [showCreateSession, setShowCreateSession] = useState(false)
-  const [sidebarOpen, setSidebarOpen] = useState(false)
   const tailAbortRef = useRef<AbortController | null>(null)
   const tailLineIdRef = useRef(0)
 
@@ -118,6 +117,35 @@ export function LogsPage({client = logsClient}: {client?: LogsClient}) {
     if (!keyword) return tailLines
     return tailLines.filter((line) => line.text.toLowerCase().includes(keyword))
   }, [tailFilter, tailLines])
+
+  const sidebarContent = useMemo(() => (
+    <>
+      <header className="panel-heading">
+        <div><span>日志会话</span><small>{sessions.length} 个会话</small></div>
+      </header>
+      <div className="logs-session-list">
+        {loading ? <div className="workbench-sidebar-state" role="status">正在加载…</div> : sessions.length === 0 ? (
+          <p className="workbench-sidebar-empty">暂无日志会话。</p>
+        ) : sessions.map((item) => (
+          <button key={item.id} type="button" className="logs-session-item" data-active={selected?.id === item.id} onClick={() => { setSelectedId(item.id); setWorkspace('search'); setEntries([]); setTree([]); setTotal(0) }}>
+            <strong>{item.name}</strong>
+            <span>{item.fileCount} 文件 · {item.serviceCount} 服务</span>
+            <small>{item.scope === 'team' ? '团队' : '个人'}</small>
+          </button>
+        ))}
+      </div>
+    </>
+  ), [loading, selected?.id, sessions])
+
+  useUnifiedSidebar(sidebarContent, {label: '日志会话', deps: [loading, selected?.id, sessions]})
+  const logContext = selected ? <div className="logs-terminal-context">
+    <span className="logs-eyebrow">ACTIVE SESSION</span><h3>{selected.name}</h3>
+    <dl><div><dt>范围</dt><dd>{selected.scope === 'team' ? '团队' : '个人'}</dd></div><div><dt>文件</dt><dd>{selected.fileCount}</dd></div><div><dt>服务</dt><dd>{selected.serviceCount}</dd></div><div><dt>工作区</dt><dd>{workspace}</dd></div></dl>
+    <StatusBadge tone={tailing ? 'success' : 'info'}>{tailing ? '实时流运行中' : '会话就绪'}</StatusBadge>
+  </div> : null
+  useUnifiedContext(logContext, {label: '日志上下文', deps: [selected?.id, workspace, tailing]})
+  useUnifiedRuntime({path: ['logs', selected?.name ?? 'sessions', workspace], detail: tailing ? `${visibleTailLines.length} lines` : searching ? '搜索中' : undefined}, [selected?.id, workspace, tailing, visibleTailLines.length, searching])
+  useUnifiedStatus(error || success || (tailing ? `LIVE · ${visibleTailLines.length} LINES` : searching ? '正在检索日志…' : `READY · ${total} MATCHES`), [error, success, tailing, visibleTailLines.length, searching, total])
 
   async function load() {
     setLoading(true)
@@ -406,32 +434,19 @@ export function LogsPage({client = logsClient}: {client?: LogsClient}) {
   }
 
   return (
-    <section className="ops-workbench-page logs-page">
-      <WorkbenchFrame sidebarOpen={sidebarOpen} onSidebarOpenChange={setSidebarOpen}>
-        <WorkbenchToolbar title="日志工作台" subtitle={selected ? `${selected.name} · ${selected.fileCount} 文件` : `${sessions.length} 个会话`} onOpenSidebar={() => setSidebarOpen(true)}>
+    <section className="product-workbench-page logs-page">
+      <div className="unified-page-frame">
+        <header className="unified-page-toolbar">
+          <h2>日志</h2>
+          <span className="unified-page-toolbar-spacer" />
           {selected && <StatusBadge tone={selected.status === 'ready' ? 'success' : 'info'}>{selected.status === 'ready' ? '已完成索引' : selected.status}</StatusBadge>}
+          {selected && <span className="workbench-pane-meta">{selected.name} · {selected.fileCount} 文件</span>}
           <button className="oc-button primary" type="button" onClick={() => setShowCreateSession(true)}>新建会话</button>
-        </WorkbenchToolbar>
-
-        <WorkbenchSidebar label="日志会话" footer={<button className="oc-button primary logs-sidebar-create" aria-label="从侧栏新建会话" type="button" onClick={() => setShowCreateSession(true)}>新建会话</button>}>
-          <div className="logs-sidebar-head"><strong>会话</strong><span>{sessions.length}</span></div>
-          <div className="logs-session-list">
-            {loading ? <div className="workbench-state" role="status">正在加载…</div> : sessions.length === 0 ? (
-              <EmptyState title="暂无日志会话" description="新建会话后可导入、检索和实时 Tail。" />
-            ) : sessions.map((item) => (
-              <button key={item.id} type="button" className="logs-session-item" data-active={selected?.id === item.id} onClick={() => { setSelectedId(item.id); setWorkspace('search'); setEntries([]); setTree([]); setTotal(0); setSidebarOpen(false) }}>
-                <strong>{item.name}</strong>
-                <span>{item.fileCount} 文件 · {item.serviceCount} 服务</span>
-                <small>{item.scope === 'team' ? '团队' : '个人'}</small>
-              </button>
-            ))}
-          </div>
-        </WorkbenchSidebar>
-
-        <WorkbenchContent label="日志工作区">
+        </header>
+        <div className="unified-page-body">
           {(success || error) && <div className="logs-feedback">{success && <p className="form-success" role="status">{success}</p>}{error && <p className="form-error" role="alert">{error}</p>}</div>}
           {!selected ? (
-            <EmptyState title="选择或新建日志会话" description="每个会话独立保存导入文件、SSH Tail 和检索结果。" action={<button className="oc-button primary" aria-label="从空状态新建会话" type="button" onClick={() => setShowCreateSession(true)}>新建会话</button>} />
+            <EmptyState title="先选择或新建日志会话" description="从左侧选择已有会话，或点击右上角「新建会话」开始工作。" />
           ) : (
             <div className="logs-workspace">
               <WorkspaceTabs
@@ -508,8 +523,8 @@ export function LogsPage({client = logsClient}: {client?: LogsClient}) {
               )}
             </div>
           )}
-        </WorkbenchContent>
-      </WorkbenchFrame>
+        </div>
+      </div>
 
       {showCreateSession && (
         <FormDialog title="新建日志会话" description="会话用于隔离日志文件、检索结果和实时 Tail。" submitLabel="创建日志会话" submitting={creating} onCancel={() => setShowCreateSession(false)} onSubmit={createSession}>

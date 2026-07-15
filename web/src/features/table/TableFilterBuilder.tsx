@@ -108,10 +108,10 @@ export function TableFilterBuilder({
     </div>
 
     <div className="table-filter-actions">
-      <button type="button" className="button compact filter-add button-with-icon" onClick={addRule}><Icon name="plus" />添加条件</button>
+      <button type="button" className="oc-button compact filter-add button-with-icon" onClick={addRule}><Icon name="plus" />添加条件</button>
       <span className="filter-action-spacer" />
-      <button type="button" className="button compact" onClick={clearDraft}>清空条件</button>
-      <button type="button" className="button primary compact" onClick={applyDraft}>应用筛选</button>
+      <button type="button" className="oc-button compact" onClick={clearDraft}>清空条件</button>
+      <button type="button" className="oc-button primary compact" onClick={applyDraft}>应用筛选</button>
     </div>
   </div>
 }

@@ -60,17 +60,17 @@ export function SchemaWorkspace({api,connectionId,schema,table,driver,onSaved,on
   <nav className="schema-tabs">
     <div className="schema-tab-list">{([['fields','字段'],['indexes','索引'],['relations','关系'],['permissions','权限'],['ddl','DDL']] as [Section,string][]).map(([id,label])=><button key={id} className={section===id?'active':''} onClick={()=>setSection(id)}>{label}</button>)}</div>
     <div className="schema-tab-actions">
-      {!editing?<button className="button primary" onClick={()=>setEditing(true)}>编辑结构</button>:<>
+      {!editing?<button className="oc-button primary" onClick={()=>setEditing(true)}>编辑结构</button>:<>
        <strong className="dirty-state">已修改 {operations.length} 项</strong>
-       <button className="button" onClick={()=>setPreviewOpen(v=>!v)}>预览 SQL</button>
-       <button className="button" disabled={!operations.length} onClick={discard}>放弃</button>
-       <button className="button primary" disabled={!operations.length||!preview||busy||previewBusy} onClick={()=>void execute()}>保存</button>
+       <button className="oc-button" onClick={()=>setPreviewOpen(v=>!v)}>预览 SQL</button>
+       <button className="oc-button" disabled={!operations.length} onClick={discard}>放弃</button>
+       <button className="oc-button primary" disabled={!operations.length||!preview||busy||previewBusy} onClick={()=>void execute()}>保存</button>
       </>}
     </div>
   </nav>
   <div className="schema-body">
    <div className="schema-main">
-    {section==='fields'&&<>{editing&&<div className="schema-tools"><button className="button primary button-with-icon" onClick={()=>setColumns(v=>[...v,{name:`new_column_${v.length+1}`,type:defaultColumnType(driver),nullable:true,isNew:true}])}><Icon name="plus"/>新增字段</button></div>}<div className={`fields-grid ${editing?'':'schema-readonly'}`}><div className="field-row field-head"><span>#</span><span>字段名</span><span>数据类型</span><span>非空</span><span>主键</span><span>默认值</span><span>注释</span><span>操作</span></div>{columns.map((c,i)=><div className="field-row" key={`${c.originalName||'new'}-${i}`}><span>{i+1}</span>{editing?<><input aria-label={`字段名 ${i+1}`} value={c.name} onChange={e=>change(i,{name:e.target.value})}/><ComboboxControl className="field-type-combobox" ariaLabel={`数据类型 ${i+1}`} value={c.type} options={typeOptions} onChange={value=>change(i,{type:value})}/><input aria-label={`非空 ${i+1}`} type="checkbox" checked={!c.nullable} onChange={e=>change(i,{nullable:!e.target.checked})}/><input aria-label={`主键 ${i+1}`} type="checkbox" checked={Boolean(c.primary)} onChange={e=>change(i,{primary:e.target.checked})}/><input aria-label={`默认值 ${i+1}`} value={c.default||''} onChange={e=>change(i,{default:e.target.value||undefined})}/><input aria-label={`注释 ${i+1}`} value={c.comment||''} onChange={e=>change(i,{comment:e.target.value})}/><button className="icon-button danger" aria-label={`删除字段 ${c.name}`} onClick={()=>setColumns(v=>v.filter((_,n)=>n!==i))}><Icon name="trash"/></button></>:<><span className="field-cell">{c.name}</span><span className="field-cell">{c.type}</span><span>{c.nullable?'—':'是'}</span><span>{c.primary?'是':'—'}</span><span className="field-cell">{c.default||'—'}</span><span className="field-cell">{c.comment||'—'}</span><span>—</span></>}</div>)}</div></>}
+    {section==='fields'&&<>{editing&&<div className="schema-tools"><button className="oc-button primary button-with-icon" onClick={()=>setColumns(v=>[...v,{name:`new_column_${v.length+1}`,type:defaultColumnType(driver),nullable:true,isNew:true}])}><Icon name="plus"/>新增字段</button></div>}<div className={`fields-grid ${editing?'':'schema-readonly'}`}><div className="field-row field-head"><span>#</span><span>字段名</span><span>数据类型</span><span>非空</span><span>主键</span><span>默认值</span><span>注释</span><span>操作</span></div>{columns.map((c,i)=><div className="field-row" key={`${c.originalName||'new'}-${i}`}><span>{i+1}</span>{editing?<><input aria-label={`字段名 ${i+1}`} value={c.name} onChange={e=>change(i,{name:e.target.value})}/><ComboboxControl className="field-type-combobox" ariaLabel={`数据类型 ${i+1}`} value={c.type} options={typeOptions} onChange={value=>change(i,{type:value})}/><input aria-label={`非空 ${i+1}`} type="checkbox" checked={!c.nullable} onChange={e=>change(i,{nullable:!e.target.checked})}/><input aria-label={`主键 ${i+1}`} type="checkbox" checked={Boolean(c.primary)} onChange={e=>change(i,{primary:e.target.checked})}/><input aria-label={`默认值 ${i+1}`} value={c.default||''} onChange={e=>change(i,{default:e.target.value||undefined})}/><input aria-label={`注释 ${i+1}`} value={c.comment||''} onChange={e=>change(i,{comment:e.target.value})}/><button className="icon-button danger" aria-label={`删除字段 ${c.name}`} onClick={()=>setColumns(v=>v.filter((_,n)=>n!==i))}><Icon name="trash"/></button></>:<><span className="field-cell">{c.name}</span><span className="field-cell">{c.type}</span><span>{c.nullable?'—':'是'}</span><span>{c.primary?'是':'—'}</span><span className="field-cell">{c.default||'—'}</span><span className="field-cell">{c.comment||'—'}</span><span>—</span></>}</div>)}</div></>}
     {section==='indexes'&&<IndexEditor
       indexes={visibleIndexes}
       columnOptions={columns.map((x) => x.name)}
@@ -92,7 +92,7 @@ function IndexEditor({indexes, columnOptions, editing, onAdd, onEdit, onDrop}: {
   const [dialog, setDialog] = useState<{mode: 'create'} | {mode: 'edit'; original: SchemaIndex} | null>(null)
   return <>
     {editing&&<div className="schema-tools">
-      <button className="button primary button-with-icon" type="button" onClick={() => setDialog({mode: 'create'})}><Icon name="plus"/>新增索引</button>
+      <button className="oc-button primary button-with-icon" type="button" onClick={() => setDialog({mode: 'create'})}><Icon name="plus"/>新增索引</button>
     </div>}
     <div className="fields-grid index-grid">
       <div className="field-row field-head index-row">

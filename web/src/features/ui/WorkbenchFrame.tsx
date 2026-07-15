@@ -20,17 +20,14 @@ export function WorkbenchFrame({children, sidebarOpen, onSidebarOpenChange, clas
   )
 }
 
-export function WorkbenchToolbar({title, subtitle, children, onOpenSidebar}: {
-  title: string
-  subtitle?: string
+export function WorkbenchPaneToolbar({children, onOpenSidebar}: {
   children?: ReactNode
   onOpenSidebar?: () => void
 }) {
   return (
-    <header className="workbench-toolbar" aria-label={`${title}工具栏`}>
+    <header className="workbench-pane-toolbar">
       {onOpenSidebar && <button className="workbench-sidebar-trigger" aria-label="打开侧栏" type="button" onClick={onOpenSidebar}>导航</button>}
-      <div className="workbench-title"><h1>{title}</h1>{subtitle && <span>{subtitle}</span>}</div>
-      {children && <div className="workbench-toolbar-actions">{children}</div>}
+      {children && <div className="workbench-pane-toolbar-actions">{children}</div>}
     </header>
   )
 }

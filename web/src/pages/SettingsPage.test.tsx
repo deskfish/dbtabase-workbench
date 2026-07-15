@@ -10,6 +10,8 @@ import {
   SettingsTeamsPage,
   SettingsUsersPage,
 } from '../settings'
+import {UnifiedShell} from '../layout/UnifiedShell'
+import {UnifiedShellTestHarness} from '../layout/UnifiedShellTestHarness'
 import type {SettingsOutletContext} from '../settings/types'
 import type {SettingsClient, TeamMemberSummary, TeamSummary, UserSummary} from '../settings/client'
 
@@ -25,11 +27,13 @@ function renderSettingsLayout(authSession: AuthSession, client: SettingsClient) 
   return render(
     <MemoryRouter initialEntries={['/settings/profile']}>
       <AuthProvider initialSession={authSession}>
-        <Routes>
-          <Route path="/settings" element={<SettingsLayout client={client} />}>
-            <Route path="profile" element={<SettingsProfilePage />} />
-          </Route>
-        </Routes>
+        <UnifiedShell>
+          <Routes>
+            <Route path="/settings" element={<SettingsLayout client={client} />}>
+              <Route path="profile" element={<SettingsProfilePage />} />
+            </Route>
+          </Routes>
+        </UnifiedShell>
       </AuthProvider>
     </MemoryRouter>,
   )
@@ -91,11 +95,13 @@ function renderHarness(page: 'profile' | 'users' | 'teams', authSession: AuthSes
   return render(
     <MemoryRouter initialEntries={['/']}>
       <AuthProvider initialSession={authSession}>
-        <Routes>
-          <Route path="/" element={<Parent />}>
-            <Route index element={<Page client={client} />} />
-          </Route>
-        </Routes>
+        <UnifiedShellTestHarness>
+          <Routes>
+            <Route path="/" element={<Parent />}>
+              <Route index element={<Page client={client} />} />
+            </Route>
+          </Routes>
+        </UnifiedShellTestHarness>
       </AuthProvider>
     </MemoryRouter>,
   )
@@ -118,11 +124,10 @@ it('renders settings as a labeled workbench with profile data', async () => {
   })
   renderSettingsLayout(session('member', [{id: 'team_one', name: 'Team One', role: 'member'}]), client)
 
-  expect(await screen.findByRole('banner', {name: '设置工具栏'})).toBeInTheDocument()
-  expect(screen.getByRole('complementary', {name: '设置分区'})).toBeInTheDocument()
-  expect(screen.getByRole('main', {name: '设置工作区'})).toBeInTheDocument()
+  expect(screen.getByRole('navigation', {name: '设置'})).toBeInTheDocument()
   expect(screen.getByRole('link', {name: '个人资料'})).toHaveAttribute('aria-current', 'page')
-  expect(await screen.findByRole('table', {name: '我的团队'})).toBeInTheDocument()
+  expect(await screen.findByRole('list', {name: '我的团队'})).toBeInTheDocument()
+  expect(await screen.findByText('Team One')).toBeInTheDocument()
 })
 
 it('lets system admins create users in a modal without rendering passwords back', async () => {
@@ -171,12 +176,26 @@ it('shows manage-members only for teams the user administers', async () => {
     canManageTeams: true,
   })
 
-  expect(await screen.findByRole('table', {name: '团队列表'})).toBeInTheDocument()
-  expect(await screen.findByRole('button', {name: '维护成员'})).toBeVisible()
-  expect(screen.getAllByRole('button', {name: '维护成员'})).toHaveLength(1)
+  expect(await screen.findByRole('table', {name: '团队成员'})).toBeInTheDocument()
+  expect(await screen.findByRole('button', {name: '成员'})).toBeVisible()
+  expect(screen.getAllByRole('button', {name: '成员'})).toHaveLength(1)
   expect(screen.queryByRole('button', {name: '添加成员'})).not.toBeInTheDocument()
-  await user.click(screen.getByRole('button', {name: '维护成员'}))
+  await user.click(screen.getByRole('button', {name: '成员'}))
   expect(screen.getByRole('checkbox', {name: '加入 Alice'}).closest('label')).toHaveClass('oc-checkbox')
+})
+
+it('presents teams as a directory, membership workspace, and resource ledger', async () => {
+  const client = fakeClient()
+  renderHarness('teams', session('admin'), client, {
+    users: [{id: 'usr_alice', username: 'alice', displayName: 'Alice', systemRole: 'admin', disabled: false}],
+    teams: [{id: 'team_one', name: 'Platform', role: 'admin'}],
+    teamMembers: {team_one: [{user: {id: 'usr_alice', username: 'alice', displayName: 'Alice', systemRole: 'admin', disabled: false}, role: 'admin'}]},
+    isSystemAdmin: true,
+  })
+
+  expect(await screen.findByRole('complementary', {name: '团队目录'})).toHaveTextContent('Platform')
+  expect(screen.getByRole('table', {name: '团队成员'})).toBeInTheDocument()
+  expect(screen.getByRole('complementary', {name: '团队资源'})).toHaveTextContent('RESOURCE LEDGER')
 })
 
 it('saves team members from the manage dialog', async () => {
@@ -197,7 +216,7 @@ it('saves team members from the manage dialog', async () => {
     refreshMembers,
   })
 
-  await user.click(await screen.findByRole('button', {name: '维护成员'}))
+  await user.click(await screen.findByRole('button', {name: '成员'}))
   expect(await screen.findByRole('dialog', {name: /维护成员 · Team One/})).toBeVisible()
   await user.click(screen.getByRole('checkbox', {name: '加入 Bob'}))
   await user.click(screen.getByRole('button', {name: '保存'}))
@@ -227,8 +246,9 @@ it('lets system admins edit a user and update team memberships', async () => {
     refreshAllMembers,
   })
 
-  const bobRow = screen.getByText('bob').closest('tr')!
-  await user.click(within(bobRow).getByRole('button', {name: '编辑'}))
+  const bobRow = screen.getByRole('row', {name: /bob.*Bob/})
+  await user.click(bobRow)
+  await user.click(within(await screen.findByRole('complementary', {name: '用户详情'})).getByRole('button', {name: '编辑'}))
   expect(await screen.findByRole('dialog', {name: 'Bob'})).toBeVisible()
   expect(screen.getByText('团队归属')).toBeVisible()
 
@@ -240,6 +260,23 @@ it('lets system admins edit a user and update team memberships', async () => {
   await waitFor(() => expect(client.updateUser).toHaveBeenCalledWith('usr_bob', {displayName: 'Robert', systemRole: 'member', disabled: false}))
   await waitFor(() => expect(client.setUserTeams).toHaveBeenCalledWith('usr_bob', [{teamId: 'team_one', role: 'member'}]))
   expect(refreshAllMembers).toHaveBeenCalled()
+})
+
+it('presents users as a searchable identity and permission matrix', async () => {
+  const client = fakeClient()
+  renderHarness('users', session('admin'), client, {
+    users: [
+      {id: 'usr_alice', username: 'alice', displayName: 'Alice', systemRole: 'admin', disabled: false},
+      {id: 'usr_bob', username: 'bob', displayName: 'Bob', systemRole: 'member', disabled: false},
+    ],
+    teams: [{id: 'team_one', name: 'Platform', role: 'admin'}],
+    teamMembers: {team_one: [{user: {id: 'usr_bob', username: 'bob', displayName: 'Bob', systemRole: 'member', disabled: false}, role: 'member'}]},
+    isSystemAdmin: true,
+  })
+
+  expect(screen.getByRole('searchbox', {name: '筛选用户'})).toBeInTheDocument()
+  expect(screen.getByRole('table', {name: '权限矩阵'})).toBeInTheDocument()
+  expect(await screen.findByRole('complementary', {name: '用户详情'})).toHaveTextContent('Alice')
 })
 
 it('lets system admins reset a user password from the edit dialog', async () => {
@@ -255,8 +292,9 @@ it('lets system admins reset a user password from the edit dialog', async () => 
     isSystemAdmin: true,
   })
 
-  const bobRow = screen.getByText('bob').closest('tr')!
-  await user.click(within(bobRow).getByRole('button', {name: '编辑'}))
+  const bobRow = screen.getByRole('row', {name: /bob.*Bob/})
+  await user.click(bobRow)
+  await user.click(within(await screen.findByRole('complementary', {name: '用户详情'})).getByRole('button', {name: '编辑'}))
   await user.type(screen.getByLabelText('新密码'), 'new-password-123')
   await user.type(screen.getByLabelText('确认新密码'), 'new-password-123')
   await user.click(screen.getByRole('button', {name: '保存'}))
@@ -280,8 +318,9 @@ it('asks before deleting a user', async () => {
     isSystemAdmin: true,
   })
 
-  const bobRow = screen.getByText('bob').closest('tr')!
-  await user.click(within(bobRow).getByRole('button', {name: '删除'}))
+  const bobRow = screen.getByRole('row', {name: /bob.*Bob/})
+  await user.click(bobRow)
+  await user.click(within(await screen.findByRole('complementary', {name: '用户详情'})).getByRole('button', {name: '删除'}))
   expect(await screen.findByRole('dialog', {name: /删除用户 Bob/})).toBeVisible()
   await user.click(screen.getByRole('button', {name: '删除用户'}))
   await waitFor(() => expect(client.deleteUser).toHaveBeenCalledWith('usr_bob'))

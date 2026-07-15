@@ -2,6 +2,8 @@ import { Navigate, Route, Routes, useLocation } from 'react-router-dom'
 import { useAuth } from '../auth/AuthProvider'
 import { LoginPage } from '../auth/LoginPage'
 import { AppShell } from '../layout/AppShell'
+import { BrandMark } from '../features/ui/BrandMark'
+import '../layout/AppShell.css'
 import { ConnectionsPage } from '../pages/ConnectionsPage'
 import { DatabasePage } from '../pages/DatabasePage'
 import { LogsPage } from '../pages/LogsPage'
@@ -18,8 +20,8 @@ import {
 function RequireAuth() {
   const {status, reload} = useAuth()
   const location = useLocation()
-  if (status === 'loading') return <main className="login-page"><p>正在检查登录状态…</p></main>
-  if (status === 'error') return <main className="login-page"><section className="login-card"><h1>认证状态加载失败</h1><button className="oc-button primary" onClick={() => void reload()}>重试</button></section></main>
+  if (status === 'loading') return <main className="login-page"><section className="login-card login-card-state"><div className="login-brand"><BrandMark size={40} /><div><h1>数据库管理</h1><p className="login-subtitle">Database Workbench</p></div></div><p className="login-copy">正在检查登录状态…</p></section></main>
+  if (status === 'error') return <main className="login-page"><section className="login-card login-card-state"><div className="login-brand"><BrandMark size={40} /><div><h1>数据库管理</h1></div></div><p className="login-copy">认证状态加载失败</p><button className="oc-button primary" onClick={() => void reload()}>重试</button></section></main>
   if (status === 'guest') return <Navigate to="/login" replace state={{from: location}} />
   return <AppShell />
 }
