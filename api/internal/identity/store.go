@@ -61,6 +61,7 @@ type UserUpdate struct {
 	DisplayName *string
 	SystemRole  *string
 	Disabled    *bool
+	Password    *string
 }
 
 const bootstrapLockKey int64 = 0x4f435f4944454e54
@@ -257,32 +258,51 @@ func (s *Store) UpdateUser(ctx context.Context, actor Principal, userID string, 
 		}
 	}
 
+	var passwordHash *string
+	if update.Password != nil {
+		password := strings.TrimSpace(*update.Password)
+		if len(password) < 8 {
+			return User{}, ErrInvalid
+		}
+		hashed, err := HashPassword(password)
+		if err != nil {
+			return User{}, fmt.Errorf("hash update user password: %w", err)
+		}
+		passwordHash = &hashed
+	}
+
 	var user User
 	if update.Disabled != nil {
 		if disabled {
 			err = tx.QueryRow(ctx, `
 				UPDATE users
-				SET display_name = $2, system_role = $3, disabled_at = now(), updated_at = now()
+				SET display_name = $2, system_role = $3,
+					password_hash = COALESCE($4, password_hash),
+					disabled_at = now(), updated_at = now()
 				WHERE id = $1
 				RETURNING id, username, display_name, system_role, disabled_at IS NOT NULL`,
-				userID, displayName, role,
+				userID, displayName, role, passwordHash,
 			).Scan(&user.ID, &user.Username, &user.DisplayName, &user.SystemRole, &user.Disabled)
 		} else {
 			err = tx.QueryRow(ctx, `
 				UPDATE users
-				SET display_name = $2, system_role = $3, disabled_at = NULL, updated_at = now()
+				SET display_name = $2, system_role = $3,
+					password_hash = COALESCE($4, password_hash),
+					disabled_at = NULL, updated_at = now()
 				WHERE id = $1
 				RETURNING id, username, display_name, system_role, disabled_at IS NOT NULL`,
-				userID, displayName, role,
+				userID, displayName, role, passwordHash,
 			).Scan(&user.ID, &user.Username, &user.DisplayName, &user.SystemRole, &user.Disabled)
 		}
 	} else {
 		err = tx.QueryRow(ctx, `
 			UPDATE users
-			SET display_name = $2, system_role = $3, updated_at = now()
+			SET display_name = $2, system_role = $3,
+				password_hash = COALESCE($4, password_hash),
+				updated_at = now()
 			WHERE id = $1
 			RETURNING id, username, display_name, system_role, disabled_at IS NOT NULL`,
-			userID, displayName, role,
+			userID, displayName, role, passwordHash,
 		).Scan(&user.ID, &user.Username, &user.DisplayName, &user.SystemRole, &user.Disabled)
 	}
 	if err != nil {
@@ -292,6 +312,88 @@ func (s *Store) UpdateUser(ctx context.Context, actor Principal, userID string, 
 		return User{}, fmt.Errorf("commit update user: %w", err)
 	}
 	return user, nil
+}
+
+func (s *Store) DeleteUser(ctx context.Context, actor Principal, userID string) error {
+	tx, err := s.pool.Begin(ctx)
+	if err != nil {
+		return fmt.Errorf("begin delete user: %w", err)
+	}
+	defer tx.Rollback(ctx)
+	if err := authorizeSystemAdminForUpdate(ctx, tx, actor.User.ID); err != nil {
+		return err
+	}
+
+	var systemRole string
+	err = tx.QueryRow(ctx, `
+		SELECT system_role
+		FROM users
+		WHERE id = $1
+		FOR UPDATE`, userID,
+	).Scan(&systemRole)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return ErrNotFound
+	}
+	if err != nil {
+		return fmt.Errorf("lock delete user: %w", err)
+	}
+	if userID == actor.User.ID {
+		return ErrForbidden
+	}
+	if systemRole == "admin" {
+		if err := ensureAnotherActiveSystemAdmin(ctx, tx, userID); err != nil {
+			return err
+		}
+	}
+
+	adminTeams, err := tx.Query(ctx, `
+		SELECT team_id
+		FROM team_members
+		WHERE user_id = $1 AND role = 'admin'
+		FOR UPDATE`, userID)
+	if err != nil {
+		return fmt.Errorf("load admin teams for delete user: %w", err)
+	}
+	defer adminTeams.Close()
+	for adminTeams.Next() {
+		var teamID string
+		if err := adminTeams.Scan(&teamID); err != nil {
+			return fmt.Errorf("scan admin team for delete user: %w", err)
+		}
+		if err := ensureAnotherTeamAdmin(ctx, tx, teamID, userID); err != nil {
+			return err
+		}
+	}
+	if err := adminTeams.Err(); err != nil {
+		return fmt.Errorf("iterate admin teams for delete user: %w", err)
+	}
+
+	reassignQueries := []string{
+		"UPDATE connections SET created_by = $2 WHERE created_by = $1",
+		"UPDATE connections SET updated_by = $2 WHERE updated_by = $1",
+		"UPDATE log_sessions SET created_by = $2 WHERE created_by = $1",
+		"UPDATE teams SET created_by = $2 WHERE created_by = $1",
+	}
+	for _, query := range reassignQueries {
+		if _, err := tx.Exec(ctx, query, userID, actor.User.ID); err != nil {
+			return mapStoreError("reassign user references", err)
+		}
+	}
+	if _, err := tx.Exec(ctx, "UPDATE audit_events SET actor_user_id = NULL WHERE actor_user_id = $1", userID); err != nil {
+		return mapStoreError("clear audit actor", err)
+	}
+
+	result, err := tx.Exec(ctx, "DELETE FROM users WHERE id = $1", userID)
+	if err != nil {
+		return mapStoreError("delete user", err)
+	}
+	if result.RowsAffected() == 0 {
+		return ErrNotFound
+	}
+	if err := tx.Commit(ctx); err != nil {
+		return fmt.Errorf("commit delete user: %w", err)
+	}
+	return nil
 }
 
 func (s *Store) UpdateTeam(ctx context.Context, actor Principal, teamID, name string) (Team, error) {

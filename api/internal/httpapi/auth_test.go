@@ -24,6 +24,7 @@ type fakeIdentity struct {
 	createdTeam      identity.Team
 	updatedTeam      identity.Team
 	deletedTeamID    string
+	deletedUserID    string
 	addedTeamID      string
 	addedTeamUserID  string
 	addedTeamRole    string
@@ -74,6 +75,11 @@ func (f *fakeIdentity) UpdateUser(_ context.Context, _ identity.Principal, userI
 	}
 	f.updatedUser = identity.User{ID: userID, Username: "updated", DisplayName: displayName, SystemRole: role, Disabled: disabled}
 	return f.updatedUser, nil
+}
+
+func (f *fakeIdentity) DeleteUser(_ context.Context, _ identity.Principal, userID string) error {
+	f.deletedUserID = userID
+	return nil
 }
 
 func (f *fakeIdentity) SetUserTeamMemberships(_ context.Context, _ identity.Principal, userID string, teams []identity.TeamAssignment) error {

@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"net/http"
+	"strings"
 	"time"
 
 	"dbworkbench/api/internal/identity"
@@ -20,6 +21,7 @@ type IdentityAdminService interface {
 	ListTeams(context.Context, identity.Principal) ([]identity.Team, error)
 	CreateUser(context.Context, identity.Principal, string, string, string, string) (identity.User, error)
 	UpdateUser(context.Context, identity.Principal, string, identity.UserUpdate) (identity.User, error)
+	DeleteUser(context.Context, identity.Principal, string) error
 	SetUserTeamMemberships(context.Context, identity.Principal, string, []identity.TeamAssignment) error
 	CreateTeam(context.Context, identity.Principal, string) (identity.Team, error)
 	UpdateTeam(context.Context, identity.Principal, string, string) (identity.Team, error)
@@ -162,6 +164,7 @@ func registerUserTeamRoutes(mux *http.ServeMux, deps Dependencies) {
 			DisplayName *string `json:"displayName"`
 			Role        *string `json:"role"`
 			Disabled    *bool   `json:"disabled"`
+			Password    *string `json:"password"`
 		}
 		if err := decodeJSON(w, r, &input); err != nil {
 			return
@@ -171,15 +174,36 @@ func registerUserTeamRoutes(mux *http.ServeMux, deps Dependencies) {
 			DisplayName: input.DisplayName,
 			SystemRole:  input.Role,
 			Disabled:    input.Disabled,
+			Password:    input.Password,
 		})
 		if err != nil {
 			writeIdentityError(w, err)
 			return
 		}
-		if input.Disabled != nil && *input.Disabled && deps.AuthSessions != nil {
-			_ = deps.AuthSessions.DeleteUser(r.Context(), userID)
+		if deps.AuthSessions != nil {
+			if input.Disabled != nil && *input.Disabled {
+				_ = deps.AuthSessions.DeleteUser(r.Context(), userID)
+			} else if input.Password != nil && strings.TrimSpace(*input.Password) != "" {
+				_ = deps.AuthSessions.DeleteUser(r.Context(), userID)
+			}
 		}
 		writeJSON(w, http.StatusOK, map[string]any{"user": toUserResponse(user)})
+	})
+
+	mux.HandleFunc("DELETE /api/users/{id}", func(w http.ResponseWriter, r *http.Request) {
+		principal, ok := requirePrincipal(w, r)
+		if !ok {
+			return
+		}
+		userID := r.PathValue("id")
+		if err := service.DeleteUser(r.Context(), principal, userID); err != nil {
+			writeIdentityError(w, err)
+			return
+		}
+		if deps.AuthSessions != nil {
+			_ = deps.AuthSessions.DeleteUser(r.Context(), userID)
+		}
+		w.WriteHeader(http.StatusNoContent)
 	})
 
 	mux.HandleFunc("PUT /api/users/{id}/teams", func(w http.ResponseWriter, r *http.Request) {

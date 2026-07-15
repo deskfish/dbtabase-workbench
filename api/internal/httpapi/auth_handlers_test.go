@@ -174,6 +174,15 @@ func TestUserAndTeamMutationRoutes(t *testing.T) {
 		t.Fatalf("updated user = %+v", fake.updatedUser)
 	}
 
+	deleteUserRR := httptest.NewRecorder()
+	deleteUserReq := httptest.NewRequest(http.MethodDelete, "/api/users/usr_bob", nil)
+	deleteUserReq.Header.Set("X-CSRF-Token", loginSession.CSRFToken)
+	deleteUserReq.AddCookie(&http.Cookie{Name: authCookieName, Value: loginSession.ID})
+	router.ServeHTTP(deleteUserRR, deleteUserReq)
+	if deleteUserRR.Code != http.StatusNoContent || fake.deletedUserID != "usr_bob" {
+		t.Fatalf("user delete status = %d user=%q body=%s", deleteUserRR.Code, fake.deletedUserID, deleteUserRR.Body.String())
+	}
+
 	userTeamsRR := httptest.NewRecorder()
 	userTeamsReq := httptest.NewRequest(http.MethodPut, "/api/users/usr_bob/teams", strings.NewReader(`{"teams":[{"teamId":"team_one","role":"member"},{"teamId":"team_two","role":"admin"}]}`))
 	userTeamsReq.Header.Set("Content-Type", "application/json")

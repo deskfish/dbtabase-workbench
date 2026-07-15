@@ -301,6 +301,36 @@ func TestSetUserTeamMembershipsIntegration(t *testing.T) {
 	}
 }
 
+func TestDeleteUserIntegration(t *testing.T) {
+	ctx, cancel := context.WithTimeout(context.Background(), 45*time.Second)
+	defer cancel()
+	store, _ := integrationStore(t, ctx)
+	root := bootstrapRootPrincipal(t, ctx, store)
+
+	bob, err := store.CreateUser(ctx, root, "bob-delete", "Bob", "password", "member")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := store.DeleteUser(ctx, root, bob.ID); err != nil {
+		t.Fatal(err)
+	}
+	users, err := store.ListUsers(ctx, root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, user := range users {
+		if user.ID == bob.ID {
+			t.Fatalf("deleted user still listed: %+v", user)
+		}
+	}
+	if err := store.DeleteUser(ctx, root, root.User.ID); !errors.Is(err, ErrForbidden) {
+		t.Fatalf("delete self error = %v, want %v", err, ErrForbidden)
+	}
+	if err := store.DeleteUser(ctx, root, "usr_missing"); !errors.Is(err, ErrNotFound) {
+		t.Fatalf("delete missing user error = %v, want %v", err, ErrNotFound)
+	}
+}
+
 func TestIdentityStoreErrorMapping(t *testing.T) {
 	tests := []struct {
 		name string
@@ -514,6 +544,34 @@ func TestUpdateUserDisableIntegration(t *testing.T) {
 	if _, err := store.Authenticate(ctx, "disable-me", "password"); err != nil {
 		t.Fatalf("re-enabled login: %v", err)
 	}
+}
+
+func TestUpdateUserPasswordIntegration(t *testing.T) {
+	ctx, cancel := context.WithTimeout(context.Background(), 45*time.Second)
+	defer cancel()
+	store, _ := integrationStore(t, ctx)
+	root := bootstrapRootPrincipal(t, ctx, store)
+
+	target, err := store.CreateUser(ctx, root, "reset-me", "Reset Me", "old-password", "member")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := store.UpdateUser(ctx, root, target.ID, UserUpdate{Password: ptr("new-password-123")}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := store.Authenticate(ctx, "reset-me", "old-password"); !errors.Is(err, ErrInvalidCredentials) {
+		t.Fatalf("old password auth error = %v, want %v", err, ErrInvalidCredentials)
+	}
+	if user, err := store.Authenticate(ctx, "reset-me", "new-password-123"); err != nil || user.ID != target.ID {
+		t.Fatalf("new password auth = %+v err=%v", user, err)
+	}
+	if _, err := store.UpdateUser(ctx, root, target.ID, UserUpdate{Password: ptr("short")}); !errors.Is(err, ErrInvalid) {
+		t.Fatalf("short password error = %v, want %v", err, ErrInvalid)
+	}
+}
+
+func ptr[T any](value T) *T {
+	return &value
 }
 
 func integrationStore(t *testing.T, ctx context.Context) (*Store, *pgxpool.Pool) {
