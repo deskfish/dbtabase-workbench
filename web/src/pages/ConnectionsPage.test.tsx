@@ -80,7 +80,7 @@ it('filters all, database, ssh, personal, and team records', async () => {
   expect(screen.getByText('Bastion')).toBeVisible()
   expect(screen.getByRole('button', {name: '新建连接'})).toBeInTheDocument()
   expect(screen.getByRole('complementary', {name: '连接筛选'})).toBeInTheDocument()
-  expect(screen.getByRole('heading', {name: 'Connections'})).toBeInTheDocument()
+  expect(screen.getByRole('heading', {name: '连接中心'})).toBeInTheDocument()
   expect(screen.getByRole('searchbox', {name: '筛选连接'})).toBeInTheDocument()
   expect(document.querySelector('.connection-sidebar-body .segmented')).not.toBeInTheDocument()
   expect(await screen.findByRole('button', {name: '删除选中连接'})).toBeInTheDocument()
@@ -95,6 +95,20 @@ it('filters all, database, ssh, personal, and team records', async () => {
 
   await userEvent.click(screen.getByRole('button', {name: '团队'}))
   expect(await screen.findByRole('row', {name: /Bastion/})).toBeVisible()
+})
+
+it('explains when saved-view filters have no matches and clears the query', async () => {
+  renderPage()
+  expect(await screen.findByRole('row', {name: /Analytics/})).toBeVisible()
+
+  await userEvent.click(screen.getByRole('button', {name: '生产环境'}))
+
+  expect(screen.getByRole('status', {name: '没有符合“prod”的连接'})).toHaveTextContent('当前共有 2 个连接')
+  expect(screen.queryByText('还没有保存的连接')).not.toBeInTheDocument()
+
+  await userEvent.click(screen.getByRole('button', {name: '清除筛选'}))
+  expect(await screen.findByRole('row', {name: /Analytics/})).toBeVisible()
+  expect(screen.getByText('Bastion')).toBeVisible()
 })
 
 it('creates a database record and refreshes the list', async () => {

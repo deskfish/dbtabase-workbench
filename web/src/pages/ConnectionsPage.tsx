@@ -106,18 +106,23 @@ export function ConnectionsPage({client = connectionsClient, settings = settings
   const adminTeams = useMemo(() => teams.filter((team) => team.role === 'admin'), [teams])
   const visible = useMemo(() => {
     const needle = query.trim().toLowerCase()
-    if (!needle) return connections
-    return connections.filter((connection) => [connection.name, connection.driver, connection.endpoint.host, connection.config.database].some((value) => String(value ?? '').toLowerCase().includes(needle)))
-  }, [connections, query])
+    return connections.filter((connection) => {
+      if (kind && connection.kind !== kind) return false
+      if (scope && connection.scope !== scope) return false
+      if (!needle) return true
+      return [connection.name, connection.driver, connection.endpoint.host, connection.config.database].some((value) => String(value ?? '').toLowerCase().includes(needle))
+    })
+  }, [connections, kind, query, scope])
+  const hasActiveFilters = Boolean(query.trim() || kind || scope)
 
   const sidebarContent = useMemo(() => (
     <>
       <header className="panel-heading">
-        <div><span>CONNECTIONS</span><small>{visible.length} / {connections.length} endpoints</small></div>
+        <div><span>连接</span><small>{visible.length} / {connections.length} 个连接</small></div>
       </header>
       <div className="connection-sidebar-body">
         <div className="connection-nav-group" aria-label="类型筛选">
-          <span className="connection-sidebar-label">REGISTRY</span>
+          <span className="connection-sidebar-label">类型</span>
           {kindFilters.map((item) => (
             <button key={item.label} type="button" aria-label={item.value === '' ? '全部连接' : item.label} data-active={kind === item.value} onClick={() => setKind(item.value)}>
               <span>{item.value === '' ? '全部连接' : item.label}</span>
@@ -126,7 +131,7 @@ export function ConnectionsPage({client = connectionsClient, settings = settings
           ))}
         </div>
         <div className="connection-nav-group" aria-label="范围筛选">
-          <span className="connection-sidebar-label">SCOPE</span>
+          <span className="connection-sidebar-label">范围</span>
           {scopeFilters.map((item) => (
             <button key={item.label} type="button" aria-label={item.value === '' ? '全部范围' : item.label} data-active={scope === item.value} onClick={() => setScope(item.value)}>
               <span>{item.value === '' ? '全部范围' : item.label}</span>
@@ -135,10 +140,10 @@ export function ConnectionsPage({client = connectionsClient, settings = settings
           ))}
         </div>
         <div className="connection-saved-views">
-          <span className="connection-sidebar-label">SAVED VIEWS</span>
-          <button type="button" onClick={() => setQuery('prod')}>› production</button>
-          <button type="button" onClick={() => setQuery('ssh')}>› ssh endpoints</button>
-          <button type="button" onClick={() => setQuery('')}>› clear query</button>
+          <span className="connection-sidebar-label">快捷筛选</span>
+          <button type="button" aria-label="生产环境" onClick={() => setQuery('prod')}>› 生产环境</button>
+          <button type="button" aria-label="SSH 入口" onClick={() => setQuery('ssh')}>› SSH 入口</button>
+          <button type="button" aria-label="清除搜索" onClick={() => setQuery('')}>› 清除搜索</button>
         </div>
       </div>
     </>
@@ -151,7 +156,7 @@ export function ConnectionsPage({client = connectionsClient, settings = settings
     setError('')
     try {
       const [items, loadedTeams] = await Promise.all([
-        client.list({kind, scope}),
+        client.list(),
         settings.listTeams().catch(() => session?.teams ?? []),
       ])
       setConnections(items)
@@ -167,7 +172,11 @@ export function ConnectionsPage({client = connectionsClient, settings = settings
   useEffect(() => {
     void load()
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [kind, scope])
+  }, [])
+
+  useEffect(() => {
+    setSelectedConnectionId((current) => visible.some((item) => item.id === current) ? current : visible[0]?.id ?? '')
+  }, [visible])
 
   function openCreate(nextKind: ConnectionKind = 'database') {
     setFieldErrors({})
@@ -258,16 +267,16 @@ export function ConnectionsPage({client = connectionsClient, settings = settings
     </div>
   ) : null
   useUnifiedContext(connectionContext, {label: '连接详情', deps: [selectedConnection?.id, selectedEndpoint, teams]})
-  useUnifiedRuntime({path: ['connections', selectedConnection?.name ?? 'registry'], detail: loading ? '同步中' : `${visible.length} visible`}, [selectedConnection?.id, loading, visible.length])
-  useUnifiedStatus(error || success || (loading ? '正在同步连接…' : `READY · ${visible.length} / ${connections.length} CONNECTIONS`), [error, success, loading, visible.length, connections.length])
+  useUnifiedRuntime({path: ['连接中心', selectedConnection?.name ?? '连接列表'], detail: loading ? '同步中' : `${visible.length} / ${connections.length} 可见`}, [selectedConnection?.id, loading, visible.length, connections.length])
+  useUnifiedStatus(error || success || (loading ? '正在同步连接…' : `就绪 · ${visible.length} / ${connections.length} 个连接`), [error, success, loading, visible.length, connections.length])
 
   return (
     <section className="product-workbench-page connections-page">
       <div className="unified-page-frame">
         <header className="unified-page-toolbar">
           <div className="unified-page-title">
-            <h2>Connections</h2>
-            <p>共享数据库与 SSH 入口 · {connections.length} endpoints</p>
+            <h2>连接中心</h2>
+            <p>统一管理数据库与 SSH 入口 · {connections.length} 个连接</p>
           </div>
           <span className="unified-page-toolbar-spacer" />
           <TerminalInlineAction tone="success" onClick={() => openCreate()}>新建连接</TerminalInlineAction>
@@ -277,9 +286,17 @@ export function ConnectionsPage({client = connectionsClient, settings = settings
           <div className="connection-workspace-grid">
             <TerminalCommandFilter aria-label="筛选连接" value={query} onChange={(event) => setQuery(event.target.value)} placeholder="名称 / 主机 / 驱动" tokens={[`类型：${kind || '全部'}`, `范围：${scope || '全部'}`]} />
             <div className="connection-table-region">
-              {loading ? <div className="workbench-fill-state" role="status">正在加载…</div> : visible.length === 0 ? <div className="workbench-fill-state"><EmptyState title="还没有保存的连接" description="新建连接，或调整资源筛选查看团队入口。" /></div> : (
+              {loading ? <div className="workbench-fill-state" role="status">正在加载…</div> : visible.length === 0 ? <div className="workbench-fill-state">{hasActiveFilters ? (
+                <EmptyState
+                  title={query.trim() ? `没有符合“${query.trim()}”的连接` : '当前筛选下没有连接'}
+                  description={`当前共有 ${connections.length} 个连接，清除筛选后可查看全部。`}
+                  action={<TerminalInlineAction tone="info" onClick={() => { setQuery(''); setKind(''); setScope('') }}>清除筛选</TerminalInlineAction>}
+                />
+              ) : (
+                <EmptyState title="还没有保存的连接" description="创建第一个数据库或 SSH 连接，开始使用工作台。" action={<TerminalInlineAction tone="success" onClick={() => openCreate()}>新建第一个连接</TerminalInlineAction>} />
+              )}</div> : (
                 <div className="connection-terminal-table-wrap"><table className="connection-terminal-table" aria-label="连接记录">
-                <thead><tr><th>NAME / DRIVER</th><th>ENDPOINT</th><th>SCOPE</th><th>STATUS</th></tr></thead>
+                <thead><tr><th>名称 / 驱动</th><th>连接地址</th><th>范围</th><th>状态</th></tr></thead>
                 <tbody>
                   {visible.map((connection) => (
                     <tr

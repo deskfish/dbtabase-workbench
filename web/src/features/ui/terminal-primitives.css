@@ -74,3 +74,11 @@
   .terminal-command-label { display: none; }
   .terminal-command-tokens { display: none; }
 }
+
+.terminal-status{font-size:11px}
+.terminal-inline-action{min-height:36px;font-size:12px}
+.terminal-command-filter{min-height:44px}
+.terminal-command-filter:focus-within{border-color:var(--accent);box-shadow:0 0 0 2px color-mix(in srgb,var(--accent) 12%,transparent)}
+.terminal-command-label{font-size:11px}.terminal-command-filter input{font-size:13px}
+.terminal-command-tokens span{padding:3px 7px;border:1px solid color-mix(in srgb,var(--info) 38%,var(--line));border-radius:999px;background:color-mix(in srgb,var(--info) 8%,transparent);font-size:10px}
+@media(max-width:760px){.terminal-inline-action{min-height:44px}}

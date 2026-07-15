@@ -31,7 +31,7 @@ it('redirects guests to login and authenticated users to connections', async () 
   renderRouter({session: fakeSession()}, ['/'])
   const modules = await screen.findByRole('navigation', {name: '模块'})
   expect(within(modules).getByRole('link', {name: '连接中心'})).toHaveAttribute('aria-current', 'page')
-  expect(screen.getByRole('heading', {name: 'Connections'})).toBeVisible()
+  expect(screen.getByRole('heading', {name: '连接中心'})).toBeVisible()
 })
 
 it('keeps one global navigation and marks the current route', async () => {

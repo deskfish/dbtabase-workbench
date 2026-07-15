@@ -15,7 +15,7 @@ export function TerminalCommandFilter({tokens = [], className = '', ...props}: I
   return (
     <div className={`terminal-command-filter ${className}`.trim()}>
       <span className="terminal-command-prompt" aria-hidden="true">›</span>
-      <span className="terminal-command-label" aria-hidden="true">FILTER</span>
+      <span className="terminal-command-label" aria-hidden="true">筛选</span>
       <input type="search" {...props} />
       {tokens.length > 0 && <div className="terminal-command-tokens">{tokens.map((token, index) => <span key={index}>{token}</span>)}</div>}
     </div>

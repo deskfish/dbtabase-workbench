@@ -20,7 +20,9 @@ it('focuses with the command shortcut and navigates through a matching module co
     </MemoryRouter>,
   )
 
+  expect(screen.getByRole('search', {name: '命令搜索'})).toBeInTheDocument()
   const input = screen.getByRole('searchbox', {name: '搜索连接、表或命令'})
+  expect(input).toHaveAttribute('aria-keyshortcuts', 'Meta+K Control+K')
   await user.keyboard('{Meta>}k{/Meta}')
   expect(input).toHaveFocus()
   await user.type(input, '日志')

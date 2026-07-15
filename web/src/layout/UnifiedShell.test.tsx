@@ -31,6 +31,16 @@ function renderShell() {
   )
 }
 
+function renderShellWithoutContext() {
+  return render(
+    <MemoryRouter initialEntries={['/connections']}>
+      <AuthProvider initialSession={session}>
+        <UnifiedShell><main aria-label="空工作区">内容</main></UnifiedShell>
+      </AuthProvider>
+    </MemoryRouter>,
+  )
+}
+
 it('opens the complete navigation in an accessible mobile drawer and closes it with Escape', async () => {
   const user = userEvent.setup()
   renderShell()
@@ -56,8 +66,15 @@ it('groups product navigation and exposes the current route in the resource rail
 
 it('composes resources, work, context, runtime, and status as one terminal', () => {
   renderShell()
+  expect(document.querySelector('.unified-shell')).toHaveAttribute('data-has-context', 'true')
   expect(screen.getByRole('navigation', {name: '资源'})).toHaveTextContent('上下文操作')
   expect(screen.getByRole('complementary', {name: '连接上下文'})).toHaveTextContent('连接延迟 18ms')
   expect(screen.getAllByRole('banner')[0]).toHaveTextContent('production / connections')
   expect(screen.getByRole('status')).toHaveTextContent('已同步 4 个连接')
+})
+
+it('marks an empty context rail so the desktop workspace can reclaim the column', () => {
+  renderShellWithoutContext()
+  expect(document.querySelector('.unified-shell')).toHaveAttribute('data-has-context', 'false')
+  expect(screen.queryByRole('button', {name: '上下文'})).not.toBeInTheDocument()
 })

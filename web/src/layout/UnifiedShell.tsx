@@ -64,23 +64,24 @@ function UnifiedShellFrame({children}: {children: ReactNode}) {
   const contextTrigger = useRef<HTMLButtonElement>(null)
   useEffect(() => { setResourceOpen(false); setContextOpen(false) }, [location.pathname])
   const path = runtime?.path?.length ? runtime.path : ['ops-console', location.pathname.split('/')[1] || 'home']
+  const hasContext = Boolean(contextRail?.content)
   const context = contextRail?.content ?? <div className="terminal-context-empty"><span>NO SELECTION</span><p>选择资源后，这里会显示运行信息、权限和可用操作。</p></div>
-  return <div className="unified-shell">
+  return <div className="unified-shell" data-has-context={hasContext}>
     <a className="skip-link" href="#main-content">跳到主内容</a>
     <header className="terminal-runtime-bar">
       <div className="terminal-brand"><BrandMark size={24}/><strong>OPS</strong></div>
       <button ref={resourceTrigger} className="terminal-mobile-trigger" aria-label="打开导航" aria-expanded={resourceOpen} onClick={() => setResourceOpen(true)}>资源</button>
       <div className="terminal-path"><span className="terminal-health-dot"/><code>{path.join(' / ')}</code>{runtime?.detail && <small>{runtime.detail}</small>}</div>
       <CommandBar />
-      <button ref={contextTrigger} className="terminal-mobile-trigger" aria-label="打开上下文" aria-expanded={contextOpen} onClick={() => setContextOpen(true)}>上下文</button>
+      {hasContext && <button ref={contextTrigger} className="terminal-mobile-trigger" aria-label="打开上下文" aria-expanded={contextOpen} onClick={() => setContextOpen(true)}>上下文</button>}
     </header>
     <nav className="terminal-resource-rail" aria-label="资源"><ResourceNavigation /></nav>
     <main id="main-content" className="unified-content" tabIndex={-1}>{children}</main>
-    <aside className="terminal-context-rail" aria-label={contextRail?.label ?? '上下文'}><div className="terminal-context-heading"><span>CONTEXT</span><small>当前选择</small></div><div className="terminal-context-content">{context}</div>{contextRail?.footer && <footer>{contextRail.footer}</footer>}</aside>
+    {hasContext && <aside className="terminal-context-rail" aria-label={contextRail?.label ?? '上下文'}><div className="terminal-context-heading"><span>上下文</span><small>当前选择</small></div><div className="terminal-context-content">{context}</div>{contextRail?.footer && <footer>{contextRail.footer}</footer>}</aside>}
     <div className="terminal-status-line" role="status" aria-live="polite"><span className="terminal-health-dot"/>{status ?? 'READY'}<code>UTF-8 · CN</code></div>
-    <div className="terminal-mobile-dock"><button onClick={() => setResourceOpen(true)}>资源</button><NavLink to="/database">工作台</NavLink><button onClick={() => setContextOpen(true)}>上下文</button></div>
+    <div className="terminal-mobile-dock"><button onClick={() => setResourceOpen(true)}>资源</button><NavLink to="/database">工作台</NavLink>{hasContext && <button onClick={() => setContextOpen(true)}>上下文</button>}</div>
     <Drawer kind="产品导航" open={resourceOpen} onClose={() => setResourceOpen(false)} triggerRef={resourceTrigger}><ResourceNavigation close={() => setResourceOpen(false)} /></Drawer>
-    <Drawer kind="上下文" open={contextOpen} onClose={() => setContextOpen(false)} triggerRef={contextTrigger}>{context}</Drawer>
+    {hasContext && <Drawer kind="上下文" open={contextOpen} onClose={() => setContextOpen(false)} triggerRef={contextTrigger}>{context}</Drawer>}
   </div>
 }
 

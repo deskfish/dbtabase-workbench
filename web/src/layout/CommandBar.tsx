@@ -61,7 +61,7 @@ export function CommandBar() {
   }
 
   return (
-    <header className="unified-command-bar" aria-label="命令栏">
+    <div className="unified-command-bar" role="search" aria-label="命令搜索">
       <div className="unified-command-search-wrap">
       <div className="unified-command-search">
         <Icon name="search" />
@@ -69,6 +69,7 @@ export function CommandBar() {
           ref={searchRef}
           type="search"
           aria-label="搜索连接、表或命令"
+          aria-keyshortcuts="Meta+K Control+K"
           placeholder="搜索连接、表或命令…"
           data-unified-command-search
           value={query}
@@ -91,6 +92,6 @@ export function CommandBar() {
       </nav>
       {commandExtras && <div className="unified-command-extras">{commandExtras}</div>}
       {announcement && <span className="sr-only" role="status" aria-label={`已导航到 ${announcement.slice(3)}`}>{announcement}</span>}
-    </header>
+    </div>
   )
 }
