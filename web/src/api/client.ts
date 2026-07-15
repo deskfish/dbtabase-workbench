@@ -1,6 +1,5 @@
 import type { ConnectionInput, DatabaseObject, MongoCollectionDetail, MongoFindResult, MutationInput, QueryResult, RedisCommandResult, RedisKeyDetail, RedisKeysResult, SchemaOperation, SchemaPreview, TableDetail } from './types'
 import type { ConnectionCapabilities } from './driver'
-import type { RegistryConnection } from '../storage/registryTypes'
 import { getCSRFToken } from '../auth/client'
 
 type Fetcher = (input: RequestInfo | URL, init?: RequestInit) => Promise<Response>
@@ -230,63 +229,6 @@ export class APIClient {
       method: 'POST',
       body: JSON.stringify({commands}),
     })
-  }
-
-  async listPersonalConnections(nickname: string): Promise<RegistryConnection[]> {
-    const result = await this.request<{connections: RegistryConnection[]}>('/api/registry/personal/connections', {headers: this.registryHeaders(nickname)})
-    return result.connections ?? []
-  }
-
-  async upsertPersonalConnection(nickname: string, connection: RegistryConnection): Promise<RegistryConnection> {
-    const result = await this.request<{connection: RegistryConnection}>('/api/registry/personal/connections', {
-      method: 'POST',
-      headers: this.registryHeaders(nickname),
-      body: JSON.stringify(connection),
-    })
-    return result.connection
-  }
-
-  async deletePersonalConnection(nickname: string, id: string): Promise<void> {
-    await this.request<void>(`/api/registry/personal/connections/${encodeURIComponent(id)}`, {
-      method: 'DELETE',
-      headers: this.registryHeaders(nickname),
-    })
-  }
-
-  async migratePersonalConnections(nickname: string, connections: RegistryConnection[]): Promise<RegistryConnection[]> {
-    const result = await this.request<{connections: RegistryConnection[]}>('/api/registry/personal/migrate', {
-      method: 'POST',
-      headers: this.registryHeaders(nickname),
-      body: JSON.stringify({connections}),
-    })
-    return result.connections ?? []
-  }
-
-  async listTeamConnections(nickname: string): Promise<RegistryConnection[]> {
-    const result = await this.request<{connections: RegistryConnection[]}>('/api/registry/team/connections', {headers: this.registryHeaders(nickname)})
-    return result.connections ?? []
-  }
-
-  async shareConnectionToTeam(nickname: string, personalConnectionId: string): Promise<RegistryConnection> {
-    const result = await this.request<{connection: RegistryConnection}>('/api/registry/team/connections', {
-      method: 'POST',
-      headers: this.registryHeaders(nickname),
-      body: JSON.stringify({personalConnectionId}),
-    })
-    return result.connection
-  }
-
-  async copyTeamConnection(nickname: string, teamConnectionId: string): Promise<RegistryConnection> {
-    const result = await this.request<{connection: RegistryConnection}>(`/api/registry/team/connections/${encodeURIComponent(teamConnectionId)}/copy`, {
-      method: 'POST',
-      headers: this.registryHeaders(nickname),
-    })
-    return result.connection
-  }
-
-  private registryHeaders(nickname: string): HeadersInit {
-    // HTTP 头只允许 ISO-8859-1，中文昵称需编码后再传
-    return {'X-User-Nickname': encodeURIComponent(nickname.trim())}
   }
 
   private async fetchWithTimeout(input: RequestInfo | URL, init: RequestInit = {}, timeoutMs = 15000): Promise<Response> {

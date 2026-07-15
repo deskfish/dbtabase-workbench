@@ -14,7 +14,6 @@ import (
 	database "dbworkbench/api/internal/db"
 	"dbworkbench/api/internal/identity"
 	"dbworkbench/api/internal/query"
-	"dbworkbench/api/internal/registry"
 	"dbworkbench/api/internal/schema"
 	"dbworkbench/api/internal/session"
 	"dbworkbench/api/internal/table"
@@ -30,7 +29,6 @@ type Dependencies struct {
 	Logs                LogStore
 	LogConnections      LogConnectionStore
 	LogSSH              LogSSHService
-	Registry            *registry.Store
 	ValidateDestination func(context.Context, string, uint16) error
 	OpenConnection      func(context.Context, database.ConnectionInput) (*sql.DB, error)
 	OpenHandle          func(context.Context, database.ConnectionInput) (*database.Handle, error)
@@ -237,9 +235,6 @@ func NewRouter(deps Dependencies) http.Handler {
 			registerSchemaRoutes(mux, deps)
 		}
 		registerMongoRedisRoutes(mux, deps)
-	}
-	if deps.Registry != nil {
-		registerRegistryRoutes(mux, deps.Registry)
 	}
 	mux.Handle("/", webui.Embedded())
 	var handler http.Handler = mux

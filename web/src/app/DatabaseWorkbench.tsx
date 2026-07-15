@@ -1,34 +1,17 @@
-import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import {Link} from 'react-router-dom'
-import { createId } from '../lib/id'
-import type { ConnectionRegistryAPI } from '../storage/connectionRegistryApi'
 import type { APIClient } from '../api/client'
 import type { ConnectionInput, DatabaseObject, MutationInput, QueryResult, QueryRisk } from '../api/types'
 import { SqlEditor } from '../features/editor/SqlEditor'
 import type { SqlCompletionContext } from '../features/editor/sqlCompletion'
 import { RiskDialog } from '../features/editor/RiskDialog'
 import { ResultGrid } from '../features/results/ResultGrid'
-import { ConnectionDialog, type ConnectionOptions } from '../features/connections/ConnectionDialog'
-import { ConnectionSidebar } from '../features/connections/ConnectionSidebar'
 import {DatabaseSwitcher} from '../features/connections/DatabaseSwitcher'
 import {DatabaseResourceRail} from '../features/database/DatabaseResourceRail'
 import {ObjectTree} from '../features/explorer/ObjectTree'
 import {RedisKeyTree} from '../features/redis/RedisKeyTree'
 import type {WorkbenchTarget} from '../connections/types'
-import { ProfileDialog } from '../features/connections/ProfileDialog'
-import { listConnections, sortConnectionsByName, type SavedConnection } from '../storage/connections'
-import {
-  copyTeamConnection,
-  listTeamConnections,
-  persistConnection,
-  removeConnection,
-  shareConnectionToTeam as shareConnectionToTeamRemote,
-  syncPersonalConnections,
-} from '../storage/connectionSync'
-import { isTeamConnectionImported } from '../storage/teamConnectionMatch'
-import type { RegistryConnection } from '../storage/registryTypes'
-import { getProfile, saveProfile, clearProfile } from '../storage/profile'
-import { applyTheme, editorThemeFor, getTheme, saveTheme, type ThemeId } from '../storage/theme'
+import { applyTheme, editorThemeFor, getTheme, type ThemeId } from '../storage/theme'
 import { addHistory, listHistory, toggleFavorite, type HistoryEntry } from '../features/history/store'
 import { HistoryPanel } from '../features/history/HistoryPanel'
 import { useTransactionGuard } from '../features/editor/useTransaction'
@@ -36,9 +19,7 @@ import { TableView } from '../features/table/TableView'
 import { BrandMark } from '../features/ui/BrandMark'
 import { Icon } from '../features/ui/Icon'
 import { SelectControl } from '../features/ui/SelectControl'
-import { ContextMenu, type ContextMenuItem } from '../features/ui/ContextMenu'
 import { isMongoDriver, isRedisDriver, isSqlDriver, driverLabel, sqlDriverOrDefault } from '../api/driver'
-import { normalizeConnectionInput, savedConnectionNeedsPasswordPrompt, validateConnectionInput } from '../features/connections/connectionFields'
 import { MongoCollectionSchema } from '../features/mongo/MongoCollectionSchema'
 import { MongoDocumentView } from '../features/mongo/MongoDocumentView'
 import { MongoQueryView } from '../features/mongo/MongoQueryView'
@@ -68,12 +49,12 @@ import {SQL_GUIDE,sqlForSelectedTable} from '../features/editor/sqlTemplate'
 import { useCommandExtras, useUnifiedContext, useUnifiedRuntime, useUnifiedSidebar, useUnifiedStatus } from '../layout/UnifiedShellContext'
 
 export type WorkbenchAPI = Pick<APIClient,
-  'createSession'|'connect'|'connectSaved'|'disconnect'|'listDatabases'|'switchDatabase'|'metadata'|'startQuery'|'queryResult'|'cancelQuery'|'exportCSV'|'beginTransaction'|'finishTransaction'|'mutate'|'tableDetail'|'previewSchema'|'executeSchema'|'capabilities'|'mongoFind'|'mongoAggregate'|'mongoMutate'|'mongoCollectionDetail'|'mongoCreateIndex'|'mongoDropIndex'|'redisScanKeys'|'redisGetKey'|'redisSaveKey'|'redisDeleteKey'|'redisSetTTL'|'redisCommands'
-> & ConnectionRegistryAPI
+  'createSession'|'connectSaved'|'disconnect'|'listDatabases'|'switchDatabase'|'metadata'|'startQuery'|'queryResult'|'cancelQuery'|'exportCSV'|'beginTransaction'|'finishTransaction'|'mutate'|'tableDetail'|'previewSchema'|'executeSchema'|'capabilities'|'mongoFind'|'mongoAggregate'|'mongoMutate'|'mongoCollectionDetail'|'mongoCreateIndex'|'mongoDropIndex'|'redisScanKeys'|'redisGetKey'|'redisSaveKey'|'redisDeleteKey'|'redisSetTTL'|'redisCommands'
+>
 
-export function DatabaseWorkbench({api, connections = [], selectedConnectionId = '', onSelectConnection, sessionBootstrap, initialConnectionId = '', initialSQL = SQL_GUIDE, embedded = true}: {api:WorkbenchAPI; connections?:WorkbenchTarget[]; selectedConnectionId?:string; onSelectConnection?:(id:string)=>void; sessionBootstrap?:Promise<string>; initialConnectionId?:string; initialSQL?:string; embedded?: boolean}) {
+export function DatabaseWorkbench({api, connections = [], selectedConnectionId = '', onSelectConnection, sessionBootstrap, initialSQL = SQL_GUIDE}: {api:WorkbenchAPI; connections?:WorkbenchTarget[]; selectedConnectionId?:string; onSelectConnection?:(id:string)=>void; sessionBootstrap?:Promise<string>; initialSQL?:string}) {
   const initialQueryTab = useMemo(() => createQueryTab(initialSQL), [initialSQL])
-  const [connectionId, setConnectionId] = useState(initialConnectionId)
+  const [connectionId, setConnectionId] = useState('')
   const [activeSavedId, setActiveSavedId] = useState('')
   const [connectingId, setConnectingId] = useState('')
   const [objects, setObjects] = useState<DatabaseObject[]>([])
@@ -85,15 +66,9 @@ export function DatabaseWorkbench({api, connections = [], selectedConnectionId =
   const [risk, setRisk] = useState<QueryRisk | null>(null)
   const transaction = useTransactionGuard()
   const transactionId = transaction.transactionId
-  const [savedConnections, setSavedConnections] = useState<SavedConnection[]>([])
-  const [teamConnections, setTeamConnections] = useState<RegistryConnection[]>([])
-  const [connectionDialog, setConnectionDialog] = useState<SavedConnection | 'new' | null>(null)
   const [history, setHistory] = useState<HistoryEntry[]>(() => listHistory())
   const [sessionState, setSessionState] = useState<'loading'|'ready'|'error'>('loading')
-  const [nickname, setNickname] = useState(() => getProfile()?.nickname ?? '')
   const [theme, setTheme] = useState<ThemeId>(() => getTheme())
-  const [profileDialog, setProfileDialog] = useState<'setup'|'edit'|null>(null)
-  const [profileMenu, setProfileMenu] = useState<{x: number; y: number} | null>(null)
   const [activeDatabase, setActiveDatabase] = useState('')
   const [databases, setDatabases] = useState<string[]>([])
   const [querySchema, setQuerySchema] = useState('')
@@ -104,14 +79,9 @@ export function DatabaseWorkbench({api, connections = [], selectedConnectionId =
   const [redisConsoleCounter, setRedisConsoleCounter] = useState(2)
   const [selectedRedisKey, setSelectedRedisKey] = useState('')
   const [createTableDialog, setCreateTableDialog] = useState<{database: string} | null>(null)
-  const [connectionBarCollapsed, setConnectionBarCollapsed] = useState(() => localStorage.getItem('workbench:connection-collapsed') === '1')
-  const [catalogWidth, setCatalogWidth] = useState(() => {
-    const saved = Number(localStorage.getItem('workbench:catalog-width'))
-    return Number.isFinite(saved) && saved >= 180 && saved <= 520 ? saved : 260
-  })
   const [connectionNotice, setConnectionNotice] = useState<{tone: 'info' | 'error'; message: string} | null>(null)
   const connected = Boolean(connectionId)
-  const activeConnection = connections.find((item) => item.id === activeSavedId) ?? savedConnections.find((item) => item.id === activeSavedId)
+  const activeConnection = connections.find((item) => item.id === activeSavedId)
 
   const activeTab = tabs.find((tab) => tab.id === activeTabId) ?? tabs[0]
   const activeQueryTab = activeTab?.kind === 'query' ? activeTab : null
@@ -143,38 +113,6 @@ export function DatabaseWorkbench({api, connections = [], selectedConnectionId =
     }
   }, [updateTab])
 
-  const refreshConnections = useCallback(async () => {
-    const applySorted = async () => sortConnectionsByName(await listConnections())
-    if (sessionState !== 'ready' || !nickname.trim()) {
-      setSavedConnections(await applySorted())
-      return
-    }
-    try {
-      setSavedConnections(await syncPersonalConnections(api, nickname))
-    } catch {
-      setSavedConnections(await applySorted())
-    }
-  }, [api, nickname, sessionState])
-
-  const refreshTeamConnections = useCallback(async () => {
-    if (sessionState !== 'ready' || !nickname.trim()) {
-      setTeamConnections([])
-      return
-    }
-    try {
-      setTeamConnections(await listTeamConnections(api, nickname))
-    } catch {
-      setTeamConnections([])
-    }
-  }, [api, nickname, sessionState])
-
-  const initSession = useCallback(() => {
-    setSessionState('loading')
-    void api.createSession()
-      .then(() => setSessionState('ready'))
-      .catch(() => setSessionState('error'))
-  }, [api])
-
   useEffect(() => {
     setSessionState('loading')
     void (sessionBootstrap ?? api.createSession())
@@ -183,17 +121,6 @@ export function DatabaseWorkbench({api, connections = [], selectedConnectionId =
   }, [api, sessionBootstrap])
 
   useEffect(() => { applyTheme(theme) }, [theme])
-
-  useEffect(() => {
-    localStorage.setItem('workbench:connection-collapsed', connectionBarCollapsed ? '1' : '0')
-  }, [connectionBarCollapsed])
-
-  useEffect(() => {
-    localStorage.setItem('workbench:catalog-width', String(catalogWidth))
-  }, [catalogWidth])
-
-  useEffect(() => { void refreshConnections() }, [refreshConnections])
-  useEffect(() => { void refreshTeamConnections() }, [refreshTeamConnections])
 
   useEffect(()=>{
     const protect=(event:BeforeUnloadEvent)=>{if(dirtySchemaTabs.size){event.preventDefault();event.returnValue=''}}
@@ -352,57 +279,6 @@ export function DatabaseWorkbench({api, connections = [], selectedConnectionId =
     }
   }, [api, connectionId, pollQuery, updateTab])
 
-  const activateConnection = useCallback(async (input: ConnectionInput, options: ConnectionOptions & {savedId?: string}) => {
-    if (sessionState !== 'ready') throw new Error('会话尚未就绪')
-    const validationError = validateConnectionInput(input)
-    if (validationError) throw new Error(validationError)
-
-    const savedId = options.savedId ?? (connectionDialog && connectionDialog !== 'new' ? connectionDialog.id : createId())
-    setConnectingId(savedId)
-
-    try {
-      const payload = normalizeConnectionInput(input)
-      if (connectionId) {
-        await api.disconnect(connectionId)
-      }
-
-      const result = await api.connect(payload)
-      const workspaceTabId = resetWorkspace(payload.driver)
-      setConnectionId(result.connectionId)
-      setActiveDatabase(result.database)
-      setActiveSavedId(savedId)
-      setConnectionDialog(null)
-
-      if (options.save) {
-        await persistConnection(api, nickname, {
-          id: savedId,
-          name: options.name,
-          driver: payload.driver,
-          host: payload.host,
-          port: payload.port,
-          database: result.database,
-          user: payload.user,
-          tlsMode: payload.tlsMode,
-          password: payload.password,
-          lastConnectedAt: Date.now(),
-        })
-        await refreshConnections()
-      } else {
-        const existing = savedConnections.find((item) => item.id === savedId)
-        if (existing) {
-          await persistConnection(api, nickname, {...existing, lastConnectedAt: Date.now()})
-          await refreshConnections()
-        }
-      }
-
-      await refreshDatabases(result.connectionId)
-      setConnectionNotice({tone: 'info', message: `已连接到 ${options.name} / ${result.database}`})
-      updateTab(workspaceTabId, {message: `已连接到 ${options.name} / ${result.database}`})
-    } finally {
-      setConnectingId('')
-    }
-  }, [api, connectionDialog, connectionId, nickname, refreshConnections, refreshDatabases, resetWorkspace, savedConnections, sessionState, updateTab])
-
   const switchDatabase = useCallback(async (database: string) => {
     if (!connectionId || database === activeDatabase) return
     setSwitchingDatabase(true)
@@ -412,11 +288,6 @@ export function DatabaseWorkbench({api, connections = [], selectedConnectionId =
       setActiveDatabase(name)
       setObjects(await api.metadata(connectionId))
       await refreshDatabases(connectionId)
-      const saved = savedConnections.find((item) => item.id === activeSavedId)
-      if (saved) {
-        await persistConnection(api, nickname, {...saved, database: name, lastConnectedAt: Date.now()})
-        await refreshConnections()
-      }
       updateTab(workspaceTabId, {message: `已切换到数据库 ${name}`})
     } catch (error) {
       updateTab(workspaceTabId, {
@@ -426,13 +297,10 @@ export function DatabaseWorkbench({api, connections = [], selectedConnectionId =
     } finally {
       setSwitchingDatabase(false)
     }
-  }, [activeDatabase, activeSavedId, activeTabId, api, connectionId, nickname, refreshConnections, refreshDatabases, resetWorkspace, savedConnections, updateTab])
+  }, [activeConnection?.driver, activeDatabase, api, connectionId, refreshDatabases, resetWorkspace, updateTab])
 
-  const handleCreateDatabase = useCallback(async (saved: SavedConnection) => {
-    if (saved.id !== activeSavedId || !connectionId || !connected) {
-      updateTab(activeTabId, {status: 'error', message: '请先连接该服务器后再创建数据库'})
-      return
-    }
+  const handleCreateDatabase = useCallback(async () => {
+    if (!connectionId || !connected) return
     const name = window.prompt('请输入新数据库名称')
     if (!name?.trim()) return
     const dbName = name.trim()
@@ -443,7 +311,7 @@ export function DatabaseWorkbench({api, connections = [], selectedConnectionId =
     const driver = sqlDriverOrDefault(activeConnection?.driver ?? '')
     const ok = await executeAdminSql(buildCreateDatabaseSQL(driver, dbName), `已创建数据库 ${dbName}`)
     if (ok) await refreshDatabases(connectionId)
-  }, [activeConnection?.driver, activeSavedId, activeTabId, connected, connectionId, executeAdminSql, refreshDatabases, updateTab])
+  }, [activeConnection?.driver, activeTabId, connected, connectionId, executeAdminSql, refreshDatabases, updateTab])
 
   const handleCreateTable = useCallback((database: string) => {
     if (!connectionId || !connected) return
@@ -528,27 +396,6 @@ export function DatabaseWorkbench({api, connections = [], selectedConnectionId =
     setActiveTabId(tab.id)
   }, [redisConsoleCounter])
 
-  const selectSavedConnection = useCallback(async (saved: SavedConnection) => {
-    if (saved.id === activeSavedId && connectionId) {
-      reportConnectionFeedback(`已连接 ${saved.name}`, 'info')
-      return
-    }
-    if (savedConnectionNeedsPasswordPrompt(saved)) {
-      setConnectionDialog(saved)
-      setConnectionNotice({tone: 'info', message: `请补录「${saved.name}」的密码后连接`})
-      return
-    }
-    try {
-      await activateConnection(
-        {driver: saved.driver, host: saved.host, port: saved.port, database: saved.database, user: saved.user, password: saved.password ?? '', tlsMode: saved.tlsMode},
-        {name: saved.name, save: true, savedId: saved.id},
-      )
-    } catch (error) {
-      const message = error instanceof Error ? error.message : '连接失败'
-      reportConnectionFeedback(message, 'error')
-    }
-  }, [activateConnection, activeSavedId, connectionId, reportConnectionFeedback])
-
   const selectWorkbenchConnection = useCallback(async (target: WorkbenchTarget) => {
     if (target.id === activeSavedId && connectionId) {
       reportConnectionFeedback(`已连接 ${target.name}`, 'info')
@@ -582,67 +429,9 @@ export function DatabaseWorkbench({api, connections = [], selectedConnectionId =
     void selectWorkbenchConnection(target)
   }, [activeSavedId, connectionId, connections, connectingId, selectedConnectionId, selectWorkbenchConnection, sessionState])
 
-  async function connect(input: ConnectionInput, options: ConnectionOptions) {
-    const savedId = connectionDialog && connectionDialog !== 'new' ? connectionDialog.id : undefined
-    await activateConnection(input, {...options, savedId})
-  }
-
-  async function removeSavedConnection(saved: SavedConnection) {
-    if (!window.confirm(`确定删除连接「${saved.name}」吗？`)) return
-    if (saved.id === activeSavedId && connectionId) {
-      await api.disconnect(connectionId)
-      setConnectionId('')
-      setActiveSavedId('')
-      resetWorkspace()
-    }
-    await removeConnection(api, nickname, saved.id)
-    await refreshConnections()
-    updateTab(activeTabId, {message: `已删除连接 ${saved.name}`})
-  }
-
-  async function handleShareConnectionToTeam(saved: SavedConnection) {
-    if (!nickname.trim()) {
-      setProfileDialog('setup')
-      return
-    }
-    try {
-      await shareConnectionToTeamRemote(api, nickname, saved.id)
-      await refreshTeamConnections()
-      updateTab(activeTabId, {message: `已将「${saved.name}」共享到团队`})
-    } catch (error) {
-      updateTab(activeTabId, {
-        status: 'error',
-        message: error instanceof Error ? error.message : '共享到团队失败',
-      })
-    }
-  }
-
-  async function copyTeamConnectionToPersonal(teamId: string) {
-    if (!nickname.trim()) {
-      setProfileDialog('setup')
-      return
-    }
-    const team = teamConnections.find(item=>item.id===teamId)
-    if (!team) return
-    if (isTeamConnectionImported(savedConnections, team)) {
-      updateTab(activeTabId, {message: `「${team.name}」已在个人连接中`})
-      return
-    }
-    try {
-      await copyTeamConnection(api, nickname, team.id)
-      await refreshConnections()
-      updateTab(activeTabId, {message: `已复制团队连接「${team.name}」到个人列表`})
-    } catch (error) {
-      updateTab(activeTabId, {
-        status: 'error',
-        message: error instanceof Error ? error.message : '复制团队连接失败',
-      })
-    }
-  }
-
   const run = useCallback(async (confirmation?: {confirmed:boolean; confirmationTarget?:string}) => {
     if (!connectionId || !activeQueryTab || !sql.trim()) return
-    const active = connections.find((item) => item.id === activeSavedId) ?? savedConnections.find((item) => item.id === activeSavedId)
+    const active = connections.find((item) => item.id === activeSavedId)
     const tabId = activeQueryTab.id
     setRisk(null)
     updateTab(tabId, {status: 'running', message: '正在执行…', result: null, queryId: ''})
@@ -666,7 +455,7 @@ export function DatabaseWorkbench({api, connections = [], selectedConnectionId =
       addHistory({sql, connectionName: active?.name ?? '当前连接', status:'error'})
       setHistory(listHistory())
     }
-  }, [activeQueryTab, activeSavedId, api, connectionId, connections, pollQuery, savedConnections, sql, transactionId, updateTab])
+  }, [activeQueryTab, activeSavedId, api, connectionId, connections, pollQuery, sql, transactionId, updateTab])
 
   const execute = useCallback(() => {
     const detected = classifyClientRisk(sql)
@@ -713,34 +502,6 @@ export function DatabaseWorkbench({api, connections = [], selectedConnectionId =
     return {driver: sqlDriverOrDefault(activeConnection?.driver ?? ''), activeDatabase, defaultSchema: schema, objects}
   }, [activeConnection?.driver, activeDatabase, connected, objects, querySchema])
 
-  const handleLogout = useCallback(async () => {
-    if (connectionId) {
-      try { await api.disconnect(connectionId) } catch { /* ignore */ }
-    }
-    setConnectionId('')
-    setActiveSavedId('')
-    setConnectingId('')
-    setDatabases([])
-    setActiveDatabase('')
-    setObjects([])
-    setConnectionNotice(null)
-    setTeamConnections([])
-    clearProfile()
-    setNickname('')
-    resetWorkspace('')
-    setProfileDialog('setup')
-  }, [api, connectionId, resetWorkspace])
-
-  const profileMenuItems: ContextMenuItem[] = [
-    {label: '个人设置', action: () => { setProfileDialog('edit'); setProfileMenu(null) }},
-    {separator: true},
-    {label: '退出', action: () => { void handleLogout(); setProfileMenu(null) }},
-  ]
-
-  const shellStyle = {
-    '--catalog-sidebar-width': `${catalogWidth}px`,
-  } as CSSProperties
-
   const connectionStatus = (
     <>
       {connected && activeConnection && <span className="embedded-driver-label">{driverLabel(activeConnection.driver)}</span>}
@@ -761,14 +522,14 @@ export function DatabaseWorkbench({api, connections = [], selectedConnectionId =
       onDeleteDatabase={(database) => void handleDeleteDatabase(database)}
     />
     <div className="object-panel">
-      <div className="panel-heading"><div><span>对象</span><small>{objects.filter((item) => item.kind === 'table').length} {objectLabel}</small></div>{isRedisDriver(activeConnection.driver) && <button type="button" className="oc-button compact" onClick={openRedisConsole}>命令台</button>}</div>
+      <div className="panel-heading"><div><span>对象</span><small>{objects.filter((item) => item.kind === 'table').length} {objectLabel}</small></div><div>{isSqlDriver(activeConnection.driver) && <button type="button" className="oc-button compact" onClick={() => void handleCreateDatabase()}>新建库</button>}{isRedisDriver(activeConnection.driver) && <button type="button" className="oc-button compact" onClick={openRedisConsole}>命令台</button>}</div></div>
       {isRedisDriver(activeConnection.driver)
         ? <RedisKeyTree api={api as APIClient} connectionId={connectionId} selectedKey={selectedRedisKey} onOpenKey={(item) => openRedisKey(item.key)} />
         : <ObjectTree objects={objects} objectLabel={objectLabel} sqlFeatures={isSqlDriver(activeConnection.driver)} selectedTableKey={selectedTableKey} onOpenTable={(table) => void loadTableData(table)} onOpenTableStructure={openTableStructure} onNewQuery={openQueryForTable} onDeleteTable={(table) => void handleDeleteTable(table)} />}
     </div>
   </div> : null
 
-  const unifiedSidebar = embedded ? <DatabaseResourceRail
+  const unifiedSidebar = <DatabaseResourceRail
     connections={connections}
     selectedId={selectedConnectionId || activeSavedId}
     connectingId={connectingId}
@@ -778,93 +539,30 @@ export function DatabaseWorkbench({api, connections = [], selectedConnectionId =
       onSelectConnection?.(target.id)
       if (!onSelectConnection) void selectWorkbenchConnection(target)
     }}
-  /> : null
+  />
 
   useUnifiedSidebar(unifiedSidebar, {
     label: '数据库',
     deps: [
-      embedded, connections, selectedConnectionId, activeSavedId, connected, connectingId,
+      connections, selectedConnectionId, activeSavedId, connected, connectingId,
       activeConnection?.driver, activeDatabase, databases, switchingDatabase, objects, connectionId,
       selectedTableKey, selectedRedisKey,
     ],
   })
-  useCommandExtras(embedded ? connectionStatus : null, [embedded, connected, activeConnection?.name, activeConnection?.driver, connectionNotice])
-  const databaseContext = embedded ? <div className="database-terminal-context">
+  useCommandExtras(connectionStatus, [connected, activeConnection?.name, activeConnection?.driver, connectionNotice])
+  const databaseContext = <div className="database-terminal-context">
     <span className="terminal-context-kicker">RUNTIME</span><h3>{activeConnection?.name ?? '未选择连接'}</h3>
     <dl><div><dt>状态</dt><dd>{connected ? '已连接' : '离线'}</dd></div><div><dt>驱动</dt><dd>{activeConnection ? driverLabel(activeConnection.driver) : '—'}</dd></div><div><dt>数据库</dt><dd>{activeDatabase || '—'}</dd></div><div><dt>事务</dt><dd>{transactionLabel}</dd></div><div><dt>对象</dt><dd>{objects.length}</dd></div></dl>
-  </div> : null
-  useUnifiedContext(databaseContext, {label: '数据库上下文', deps: [embedded, connected, activeConnection?.name, activeConnection?.driver, activeDatabase, transactionId, objects.length]})
-  useUnifiedRuntime(embedded ? {path: ['database', activeConnection?.name ?? 'disconnected', activeDatabase || 'workspace'], detail: connected ? driverLabel(activeConnection?.driver ?? '') : 'OFFLINE'} : null, [embedded, connected, activeConnection?.name, activeConnection?.driver, activeDatabase])
-  useUnifiedStatus(embedded ? (connectionNotice?.message || (activeQueryTab?.status === 'running' ? 'QUERY RUNNING' : connected ? `${transactionLabel} · ${rows.length} ROWS` : '等待数据库连接')) : null, [embedded, connectionNotice, activeQueryTab?.status, connected, transactionLabel, rows.length])
+  </div>
+  useUnifiedContext(databaseContext, {label: '数据库上下文', deps: [connected, activeConnection?.name, activeConnection?.driver, activeDatabase, transactionId, objects.length]})
+  useUnifiedRuntime({path: ['database', activeConnection?.name ?? 'disconnected', activeDatabase || 'workspace'], detail: connected ? driverLabel(activeConnection?.driver ?? '') : 'OFFLINE'}, [connected, activeConnection?.name, activeConnection?.driver, activeDatabase])
+  useUnifiedStatus(connectionNotice?.message || (activeQueryTab?.status === 'running' ? 'QUERY RUNNING' : connected ? `${transactionLabel} · ${rows.length} ROWS` : '等待数据库连接'), [connectionNotice, activeQueryTab?.status, connected, transactionLabel, rows.length])
 
-  return <div className={`app-shell ${embedded ? 'embedded unified-workspace' : ''} ${connectionBarCollapsed ? 'connection-collapsed' : ''} ${connected ? 'is-connected' : ''}`} style={shellStyle}>
+  return <div className={`app-shell embedded unified-workspace ${connected ? 'is-connected' : ''}`}>
     <a className="skip-link" href="#sql-editor">跳到 SQL 编辑器</a>
-    {!embedded && (
-      <header className="topbar">
-        <div className="brand"><BrandMark size={32} /><div><h1>数据库管理</h1><p>Database Workbench · MySQL / PostgreSQL / MongoDB / Redis</p></div></div>
-        <div className="topbar-actions">
-          {connectionStatus}
-          <button
-            type="button"
-            className="topbar-profile"
-            aria-haspopup="menu"
-            aria-expanded={profileMenu ? 'true' : 'false'}
-            onClick={(event) => {
-              const rect = event.currentTarget.getBoundingClientRect()
-              setProfileMenu({x: rect.right, y: rect.bottom + 4})
-            }}
-          ><b>{(nickname||'访').slice(0,1)}</b>{nickname||'访客'} · 团队</button>
-        </div>
-      </header>
-    )}
-    {embedded && (
-      <div className="embedded-connection-bar visually-hidden" aria-hidden="true">
-        {connectionStatus}
-      </div>
-    )}
+    <div className="embedded-connection-bar visually-hidden" aria-hidden="true">{connectionStatus}</div>
 
-    {!embedded && (
-      <ConnectionSidebar
-        nickname={nickname || '访客'}
-        savedConnections={savedConnections}
-        teamConnections={teamConnections}
-        activeSavedId={activeSavedId}
-        connected={connected}
-        connectingId={connectingId}
-        activeDriver={activeConnection?.driver ?? ''}
-        activeDatabase={activeDatabase}
-        databases={databases}
-        switchingDatabase={switchingDatabase}
-        objects={objects}
-        connectionId={connectionId}
-        api={api as APIClient}
-        connectionBarCollapsed={connectionBarCollapsed}
-        onToggleConnectionBar={() => setConnectionBarCollapsed((value) => !value)}
-        catalogWidth={catalogWidth}
-        onCatalogWidthChange={setCatalogWidth}
-        onEditProfile={() => setProfileDialog('edit')}
-        onNewConnection={() => setConnectionDialog('new')}
-        onSelectConnection={(saved) => void selectSavedConnection(saved)}
-        onEditConnection={(saved) => setConnectionDialog(saved)}
-        onDeleteConnection={(saved) => void removeSavedConnection(saved)}
-        onShareConnectionToTeam={(saved) => void handleShareConnectionToTeam(saved)}
-        onCopyTeamConnection={(teamId) => void copyTeamConnectionToPersonal(teamId)}
-        onSwitchDatabase={(database) => void switchDatabase(database)}
-        onCreateDatabase={(saved) => void handleCreateDatabase(saved)}
-        onCreateTable={handleCreateTable}
-        onDeleteDatabase={(database) => void handleDeleteDatabase(database)}
-        onOpenTable={(table) => void loadTableData(table)}
-        onOpenTableStructure={openTableStructure}
-        onNewQuery={openQueryForTable}
-        onDeleteTable={(table) => void handleDeleteTable(table)}
-        onOpenRedisKey={openRedisKey}
-        onOpenRedisConsole={openRedisConsole}
-        selectedTableKey={selectedTableKey}
-        selectedRedisKey={selectedRedisKey}
-      />
-    )}
-
-    <main className={`workspace ${activeTab?.kind === 'table' || activeTab?.kind === 'mongo-document' || activeTab?.kind === 'redis-key' ? 'mode-table' : 'mode-query'}${embedded && activeTab?.kind === 'query' ? ' unified-split' : ''}`}>
+    <main className={`workspace ${activeTab?.kind === 'table' || activeTab?.kind === 'mongo-document' || activeTab?.kind === 'redis-key' ? 'mode-table' : 'mode-query'}${activeTab?.kind === 'query' ? ' unified-split' : ''}`}>
       <div className="status-rail" aria-hidden="true" />
       <nav className="tabbar" aria-label="工作区标签页" role="tablist">
         {tabs.map((tab) => <div className="tab-shell" key={tab.id}><button
@@ -1036,29 +734,12 @@ export function DatabaseWorkbench({api, connections = [], selectedConnectionId =
       </section>}
     </main>
 
-    {profileMenu && <ContextMenu x={profileMenu.x} y={profileMenu.y} items={profileMenuItems} onClose={() => setProfileMenu(null)} />}
-
     {risk && <RiskDialog risk={risk} onCancel={() => setRisk(null)} onConfirm={(target) => void run({confirmed:true, confirmationTarget:target})} />}
-    {connectionDialog && <ConnectionDialog sessionState={sessionState} onRetrySession={initSession} saved={connectionDialog === 'new' ? undefined : connectionDialog} onCancel={() => setConnectionDialog(null)} onConnect={connect} />}
     {createTableDialog && <CreateTableDialog
       database={createTableDialog.database}
       driver={sqlDriverOrDefault(activeConnection?.driver ?? '')}
       onClose={() => setCreateTableDialog(null)}
       onCreate={(tableName, columns) => void handleCreateTableSubmit(createTableDialog.database, tableName, columns)}
-    />}
-    {!embedded && profileDialog && <ProfileDialog
-      initialNickname={nickname}
-      initialTheme={theme}
-      onCancel={profileDialog === 'edit' ? () => setProfileDialog(null) : undefined}
-      onSave={({nickname: nextNickname, theme: nextTheme}) => {
-        saveProfile({nickname: nextNickname})
-        saveTheme(nextTheme)
-        setNickname(nextNickname)
-        setTheme(nextTheme)
-        setProfileDialog(null)
-        void refreshConnections()
-        void refreshTeamConnections()
-      }}
     />}
   </div>
 }

@@ -33,6 +33,7 @@ func TestLoadOpsConsolePlatform(t *testing.T) {
 		"OC_ACTIVE_CREDENTIAL_KEY": "v1",
 		"OC_COOKIE_SECURE":         "false",
 		"OC_SESSION_TTL":           "12h",
+		"OC_SCHEMA_SECRET":         "schema-secret",
 	}
 	cfg, err := Load(func(key string) string { return values[key] })
 	if err != nil {
@@ -41,7 +42,7 @@ func TestLoadOpsConsolePlatform(t *testing.T) {
 	if cfg.PostgresURL != values["OC_DATABASE_URL"] || cfg.RedisURL != values["OC_REDIS_URL"] {
 		t.Fatalf("unexpected URLs: %+v", cfg)
 	}
-	if cfg.CredentialKeys != values["OC_CREDENTIAL_KEYS"] || cfg.ActiveCredentialKey != "v1" || cfg.CookieSecure || cfg.SessionTTL != 12*time.Hour {
+	if cfg.CredentialKeys != values["OC_CREDENTIAL_KEYS"] || cfg.ActiveCredentialKey != "v1" || cfg.CookieSecure || cfg.SessionTTL != 12*time.Hour || cfg.SchemaSecret != "schema-secret" {
 		t.Fatalf("unexpected config: %+v", cfg)
 	}
 }

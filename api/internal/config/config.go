@@ -16,8 +16,7 @@ type Config struct {
 	AllowedCIDRs           []netip.Prefix
 	AllowedPorts           map[uint16]struct{}
 	AllowedSuffixes        []string
-	RegistryPath           string
-	RegistrySecret         string
+	SchemaSecret           string
 	PostgresURL            string
 	RedisURL               string
 	CredentialKeys         string
@@ -66,8 +65,7 @@ func Load(getenv func(string) string) (Config, error) {
 	if value := getenv("DBW_ALLOWED_SUFFIXES"); value != "" {
 		cfg.AllowedSuffixes = splitList(value)
 	}
-	cfg.RegistryPath = stringValue(getenv("DBW_REGISTRY_PATH"), "/data/registry.db")
-	cfg.RegistrySecret = getenv("DBW_REGISTRY_SECRET")
+	cfg.SchemaSecret = stringValue(getenv("OC_SCHEMA_SECRET"), "database-workbench-ephemeral-schema-secret")
 	if cfg.PostgresURL, err = requiredValue(getenv("OC_DATABASE_URL")); err != nil {
 		return Config{}, fmt.Errorf("OC_DATABASE_URL: %w", err)
 	}

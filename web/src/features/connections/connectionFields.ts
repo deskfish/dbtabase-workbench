@@ -1,7 +1,6 @@
 import type { ConnectionInput } from '../../api/types'
 import type { DriverId } from '../../api/driver'
 import { defaultPort } from '../../api/driver'
-import type { SavedConnection } from '../../storage/connections'
 
 export type FieldSpec = {
   label: string
@@ -122,15 +121,6 @@ export function validateConnectionInput(input: ConnectionInput): string | null {
 
 export function connectionNeedsStoredPassword(driver: DriverId): boolean {
   return driver === 'mysql' || driver === 'postgres'
-}
-
-/** 已保存连接缺少可用密码时需要弹窗补录（含 registry 解密失败场景） */
-export function savedConnectionNeedsPasswordPrompt(saved: Pick<SavedConnection, 'driver' | 'user' | 'password' | 'hasPassword'>): boolean {
-  if (saved.password) return false
-  if (connectionNeedsStoredPassword(saved.driver)) return true
-  if (saved.driver === 'mongodb' && saved.user.trim()) return true
-  if ((saved.driver === 'mongodb' || saved.driver === 'redis') && saved.hasPassword) return true
-  return false
 }
 
 export function driverDefaults(driver: DriverId): Pick<ConnectionInput, 'driver' | 'port' | 'tlsMode'> {

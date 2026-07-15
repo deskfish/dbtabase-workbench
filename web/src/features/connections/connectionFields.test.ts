@@ -37,11 +37,3 @@ it('requires mongo password when username is set', () => {
   expect(validateConnectionInput(base('mongodb', {port: 27017, user: 'root'}))).toBe('填写 MongoDB 用户名时必须提供密码')
   expect(validateConnectionInput(base('mongodb', {port: 27017, user: 'root', password: 'root'}))).toBeNull()
 })
-
-it('prompts for saved mongo/redis passwords when missing locally', async () => {
-  const {savedConnectionNeedsPasswordPrompt} = await import('./connectionFields')
-  expect(savedConnectionNeedsPasswordPrompt({driver: 'mongodb', user: 'root', password: '', hasPassword: true})).toBe(true)
-  expect(savedConnectionNeedsPasswordPrompt({driver: 'redis', user: '', password: '', hasPassword: true})).toBe(true)
-  expect(savedConnectionNeedsPasswordPrompt({driver: 'redis', user: '', password: '', hasPassword: false})).toBe(false)
-  expect(savedConnectionNeedsPasswordPrompt({driver: 'mongodb', user: '', password: 'secret'})).toBe(false)
-})

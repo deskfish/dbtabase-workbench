@@ -39,4 +39,7 @@ type SealedSecret struct {
 	Ciphertext []byte
 }
 
-var ErrForbidden = errors.New("forbidden")
+var (
+	ErrForbidden = errors.New("forbidden")
+	ErrNotFound  = errors.New("connection not found")
+)

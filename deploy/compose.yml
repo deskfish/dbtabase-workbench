@@ -42,8 +42,7 @@ services:
       DBW_QUERY_TIMEOUT: ${DBW_QUERY_TIMEOUT:-30s}
       DBW_PAGE_SIZE: ${DBW_PAGE_SIZE:-200}
       DBW_MAX_ROWS: ${DBW_MAX_ROWS:-10000}
-      DBW_REGISTRY_PATH: /data/registry.db
-      DBW_REGISTRY_SECRET: ${DBW_REGISTRY_SECRET:-}
+      OC_SCHEMA_SECRET: ${OC_SCHEMA_SECRET:-database-workbench-ephemeral-schema-secret}
       OC_DATABASE_URL: postgres://ops:${OC_POSTGRES_PASSWORD:-ops-console-local-password}@postgres:5432/ops_console?sslmode=disable
       OC_REDIS_URL: redis://redis:6379/0
       OC_CREDENTIAL_KEYS: ${OC_CREDENTIAL_KEYS:?OC_CREDENTIAL_KEYS is required}

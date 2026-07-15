@@ -74,21 +74,7 @@ func main() {
 	sessions := session.NewStore(30 * time.Minute)
 	queries := query.NewService(query.Limits{Timeout: cfg.QueryTimeout, PageSize: cfg.PageSize, MaxRows: cfg.MaxRows})
 	transactions := query.NewTransactionService(5 * time.Minute)
-	schemaSecret := cfg.RegistrySecret
-	if schemaSecret == "" {
-		schemaSecret = "database-workbench-ephemeral-schema-secret"
-	}
-	schemaService := schema.NewService(schemaSecret, 10*time.Minute)
-	var registryStore *registry.Store
-	if cfg.RegistrySecret != "" {
-		registryStore, err = registry.Open(cfg.RegistryPath, cfg.RegistrySecret)
-		if err != nil {
-			log.Fatal(err)
-		}
-		defer registryStore.Close()
-	} else {
-		log.Printf("registry disabled: DBW_REGISTRY_SECRET is empty")
-	}
+	schemaService := schema.NewService(cfg.SchemaSecret, 10*time.Minute)
 	server := &http.Server{
 		Addr: cfg.Address,
 		Handler: httpapi.NewRouter(httpapi.Dependencies{
@@ -99,7 +85,6 @@ func main() {
 			Logs:               logStore,
 			LogConnections:     connectionRegistry,
 			LogSSH:             sshLogService,
-			Registry:           registryStore,
 			Ready: func() bool {
 				ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
 				defer cancel()

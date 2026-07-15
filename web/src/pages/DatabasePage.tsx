@@ -42,7 +42,6 @@ export function DatabasePage({client = connectionsClient, api: providedAPI}: {cl
       connections={connections}
       selectedConnectionId={selectedConnectionId}
       onSelectConnection={(id) => setSearchParams({connection: id})}
-      embedded
     />
   </div>
 }
