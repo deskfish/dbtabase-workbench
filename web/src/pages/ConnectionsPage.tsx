@@ -216,7 +216,7 @@ export function ConnectionsPage({client = connectionsClient, settings = settings
     setError('')
     setSuccess('')
     try {
-      const input = toSaveInput(form, adminTeams)
+      const input = toSaveInput(form, adminTeams, {existingSecret: formMode === 'edit' && Boolean(editing?.hasSecret)})
       if (formMode === 'edit' && editing) {
         await client.update(editing.id, input)
         setSuccess('连接已更新')
@@ -282,7 +282,7 @@ export function ConnectionsPage({client = connectionsClient, settings = settings
           <TerminalInlineAction tone="success" onClick={() => openCreate()}>新建连接</TerminalInlineAction>
         </header>
         <div className="unified-page-body">
-          {(success || error) && <div className="connection-feedback">{success && <p className="form-success" role="status">{success}</p>}{error && <p className="form-error" role="alert">{error}</p>}</div>}
+          {!formMode && (success || error) && <div className="connection-feedback">{success && <p className="form-success" role="status">{success}</p>}{error && <p className="form-error" role="alert">{error}</p>}</div>}
           <div className="connection-workspace-grid">
             <TerminalCommandFilter aria-label="筛选连接" value={query} onChange={(event) => setQuery(event.target.value)} placeholder="名称 / 主机 / 驱动" tokens={[`类型：${kind || '全部'}`, `范围：${scope || '全部'}`]} />
             <div className="connection-table-region">
@@ -335,6 +335,7 @@ export function ConnectionsPage({client = connectionsClient, settings = settings
           onCancel={() => setFormMode(null)}
           onSubmit={submit}
         >
+          {error && <p className="connection-dialog-error form-error" role="alert">{error}</p>}
           <div className="connection-form">
             <div className="segmented">
               <button type="button" data-active={form.kind === 'database'} onClick={() => setFormKind('database')}>数据库</button>
@@ -347,14 +348,23 @@ export function ConnectionsPage({client = connectionsClient, settings = settings
             <TextField label="主机" value={form.host} error={fieldErrors.host} onChange={(event) => setForm((current) => ({...current, host: event.target.value}))} />
             <TextField label="端口" inputMode="numeric" value={form.port} error={fieldErrors.port} onChange={(event) => setForm((current) => ({...current, port: event.target.value}))} />
             {form.kind === 'database' && <TextField label="数据库名" value={form.database} onChange={(event) => setForm((current) => ({...current, database: event.target.value}))} />}
-            <TextField label="用户名" autoComplete="username" value={form.username} onChange={(event) => setForm((current) => ({...current, username: event.target.value}))} />
             {form.kind === 'database' ? (
-              <TextField label="密码" type="password" autoComplete="new-password" value={form.password} placeholder={formMode === 'edit' && editing?.hasSecret ? '留空则保留已保存密码' : ''} hint={formMode === 'edit' && editing?.hasSecret ? '已保存密码；留空则继续保留。' : undefined} onChange={(event) => setForm((current) => ({...current, password: event.target.value}))} />
-            ) : (
               <>
-                <TextAreaField label="私钥" className="connection-wide-field" value={form.privateKey} placeholder={formMode === 'edit' && editing?.hasSecret ? '留空则保留已保存私钥' : ''} hint={formMode === 'edit' && editing?.hasSecret ? '已保存私钥；留空则继续保留。' : undefined} onChange={(event) => setForm((current) => ({...current, privateKey: event.target.value}))} />
-                <TextField label="密钥口令" type="password" autoComplete="new-password" value={form.passphrase} onChange={(event) => setForm((current) => ({...current, passphrase: event.target.value}))} />
+                <TextField label="用户名" autoComplete="username" value={form.username} onChange={(event) => setForm((current) => ({...current, username: event.target.value}))} />
+                <TextField label="密码" type="password" autoComplete="new-password" value={form.password} placeholder={formMode === 'edit' && editing?.hasSecret ? '留空则保留已保存密码' : ''} hint={formMode === 'edit' && editing?.hasSecret ? '已保存密码；留空则继续保留。' : undefined} onChange={(event) => setForm((current) => ({...current, password: event.target.value}))} />
               </>
+            ) : (
+              <fieldset className="connection-auth-group">
+                <legend>认证凭据</legend>
+                <p className="connection-auth-hint">登录密码或私钥至少填写一项</p>
+                {fieldErrors.credentials && <p className="connection-auth-error" role="alert">{fieldErrors.credentials}</p>}
+                <div className="connection-auth-grid">
+                  <TextField label="用户名" autoComplete="username" value={form.username} onChange={(event) => setForm((current) => ({...current, username: event.target.value}))} />
+                  <TextField label="登录密码" type="password" autoComplete="new-password" value={form.password} placeholder={formMode === 'edit' && editing?.hasSecret ? '留空则保留已保存凭据' : ''} hint={formMode === 'edit' && editing?.hasSecret ? '已有加密凭据；全部留空则继续保留。' : undefined} onChange={(event) => setForm((current) => ({...current, password: event.target.value}))} />
+                  <TextAreaField label="私钥" className="connection-auth-private-key" value={form.privateKey} placeholder={formMode === 'edit' && editing?.hasSecret ? '留空则保留已保存凭据' : ''} onChange={(event) => setForm((current) => ({...current, privateKey: event.target.value}))} />
+                  <TextField label="私钥口令" type="password" autoComplete="new-password" value={form.passphrase} error={fieldErrors.passphrase} hint="仅用于解锁上方填写的加密私钥" onChange={(event) => setForm((current) => ({...current, passphrase: event.target.value}))} />
+                </div>
+              </fieldset>
             )}
           </div>
         </FormDialog>

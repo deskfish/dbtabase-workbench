@@ -41,11 +41,12 @@ function fakeSettings(): SettingsClient {
   }
 }
 
-function fakeConnections(options: {removeError?: Error} = {}): ConnectionsClient {
+function fakeConnections(options: {createError?: Error; removeError?: Error} = {}): ConnectionsClient {
   let current = [...records]
   return {
     list: vi.fn(async (filters: ConnectionFilters = {}) => current.filter((item) => (!filters.kind || item.kind === filters.kind) && (!filters.scope || item.scope === filters.scope))),
     create: vi.fn(async (input: SaveInput) => {
+      if (options.createError) throw options.createError
       const created = {...input.connection, id: 'conn_new', ownerUserId: 'usr_alice', hasSecret: Boolean(input.secret)} as Connection
       current = [created, ...current]
       return created
@@ -130,6 +131,43 @@ it('creates a database record and refreshes the list', async () => {
     secret: {username: 'ops', password: 'secret'},
   }))
   expect(await screen.findByText('Reporting')).toBeVisible()
+})
+
+it('creates an ssh record with login password authentication', async () => {
+  const {client} = renderPage()
+  await screen.findByRole('row', {name: /Analytics/})
+
+  await userEvent.click(screen.getByRole('button', {name: '新建连接'}))
+  const dialog = screen.getByRole('dialog', {name: '新建连接'})
+  await userEvent.click(within(dialog).getByRole('button', {name: 'SSH'}))
+  expect(within(dialog).getByText('登录密码或私钥至少填写一项')).toBeVisible()
+  await userEvent.type(within(dialog).getByLabelText('连接名称'), 'Password Bastion')
+  await userEvent.type(within(dialog).getByLabelText('主机'), '10.10.80.100')
+  await userEvent.type(within(dialog).getByLabelText('用户名'), 'root')
+  await userEvent.type(within(dialog).getByLabelText('登录密码'), 'login-secret')
+  await userEvent.click(within(dialog).getByRole('button', {name: '保存连接'}))
+
+  await waitFor(() => expect(client.create).toHaveBeenCalled())
+  expect(client.create).toHaveBeenCalledWith(expect.objectContaining({
+    connection: expect.objectContaining({kind: 'ssh', driver: 'ssh'}),
+    secret: {username: 'root', password: 'login-secret'},
+  }))
+  expect(await screen.findByText('Password Bastion')).toBeVisible()
+})
+
+it('keeps create errors visible inside the connection dialog', async () => {
+  renderPage(fakeConnections({createError: new Error('连接名称已存在')}))
+  await screen.findByRole('row', {name: /Analytics/})
+
+  await userEvent.click(screen.getByRole('button', {name: '新建连接'}))
+  const dialog = screen.getByRole('dialog', {name: '新建连接'})
+  await userEvent.type(within(dialog).getByLabelText('连接名称'), 'Analytics')
+  await userEvent.type(within(dialog).getByLabelText('主机'), 'db.internal')
+  await userEvent.type(within(dialog).getByLabelText('密码'), 'secret')
+  await userEvent.click(within(dialog).getByRole('button', {name: '保存连接'}))
+
+  expect(await within(dialog).findByRole('alert')).toHaveTextContent('连接名称已存在')
+  expect(dialog).toBeVisible()
 })
 
 it('edits records with redacted secret fields and preserves secrets when left blank', async () => {

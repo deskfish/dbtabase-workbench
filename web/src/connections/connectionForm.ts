@@ -44,7 +44,11 @@ export function isValidKindDriver(kind: ConnectionKind, driver: ConnectionDriver
   return kind === 'ssh' ? driver === 'ssh' : databaseDrivers.has(driver)
 }
 
-export function toSaveInput(value: ConnectionFormValue, teams: TeamSummary[]): SaveInput {
+type SaveOptions = {
+  existingSecret?: boolean
+}
+
+export function toSaveInput(value: ConnectionFormValue, teams: TeamSummary[], options: SaveOptions = {}): SaveInput {
   const fields: Record<string, string> = {}
   const name = value.name.trim()
   const host = value.host.trim()
@@ -58,6 +62,8 @@ export function toSaveInput(value: ConnectionFormValue, teams: TeamSummary[]): S
   if (!host) fields.host = '请输入主机名'
   if (!isValidKindDriver(value.kind, value.driver)) fields.driver = '类型和驱动不匹配'
   if (value.scope === 'team' && !teams.some((team) => team.id === value.teamId && team.role === 'admin')) fields.teamId = '请选择你管理的团队'
+  if (value.kind === 'ssh' && passphrase && !privateKey) fields.passphrase = '私钥口令需要配合私钥使用'
+  if (value.kind === 'ssh' && !password && !privateKey && !options.existingSecret) fields.credentials = '请输入登录密码或私钥'
 
   const rawPort = value.port.trim() || (value.kind === 'ssh' ? '22' : defaultPort(value.driver))
   const port = Number(rawPort)
@@ -78,8 +84,15 @@ export function toSaveInput(value: ConnectionFormValue, teams: TeamSummary[]): S
   if (value.kind === 'database' && password) {
     return {connection, secret: {username, password}}
   }
-  if (value.kind === 'ssh' && privateKey) {
-    return {connection, secret: {username, privateKey, ...(passphrase ? {passphrase} : {})}}
+  if (value.kind === 'ssh' && (password || privateKey)) {
+    return {
+      connection,
+      secret: {
+        username,
+        ...(password ? {password} : {}),
+        ...(privateKey ? {privateKey, ...(passphrase ? {passphrase} : {})} : {}),
+      },
+    }
   }
   return {connection}
 }
