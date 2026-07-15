@@ -3,6 +3,7 @@ import { connectionsClient, type ConnectionsClient } from '../connections/client
 import { ConnectionFormError, defaultDriver, defaultPort, toSaveInput, type ConnectionFormValue } from '../connections/connectionForm'
 import type { Connection, ConnectionDriver, ConnectionFilters, ConnectionKind, ConnectionScope } from '../connections/types'
 import { useAuth } from '../auth/AuthProvider'
+import {AuthAPIError} from '../auth/client'
 import {ConfirmDialog} from '../features/ui/ConfirmDialog'
 import {EmptyState} from '../features/ui/EmptyState'
 import {FormDialog} from '../features/ui/FormDialog'
@@ -229,6 +230,7 @@ export function ConnectionsPage({client = connectionsClient, settings = settings
       await load()
     } catch (err) {
       if (err instanceof ConnectionFormError) setFieldErrors(err.fields)
+      else if (err instanceof AuthAPIError && err.code === 'connection_name_conflict') setFieldErrors({name: err.message})
       else setError(messageFor(err))
     } finally {
       setSaving(false)

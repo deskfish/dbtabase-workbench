@@ -254,6 +254,8 @@ func writeConnectionRegistryError(w http.ResponseWriter, err error) {
 		writeError(w, http.StatusNotFound, "connection_not_found", "连接不存在")
 	case errors.Is(err, registry.ErrForbidden):
 		writeError(w, http.StatusForbidden, "forbidden", "没有权限操作该连接")
+	case errors.Is(err, registry.ErrConflict):
+		writeError(w, http.StatusConflict, "connection_name_conflict", "同一范围的同类型连接中已存在该名称")
 	default:
 		writeError(w, http.StatusBadRequest, "registry_failed", err.Error())
 	}

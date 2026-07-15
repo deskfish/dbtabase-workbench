@@ -12,6 +12,7 @@ import (
 
 	"dbworkbench/api/internal/identity"
 	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 
@@ -94,7 +95,7 @@ func (s *PGStore) Create(ctx context.Context, p identity.Principal, input SaveIn
 		nullString(connection.TeamID), normalizeJSON(connection.Endpoint), normalizeJSON(connection.Config),
 		sealed.KeyID, sealed.Ciphertext, p.User.ID))
 	if err != nil {
-		return Connection{}, fmt.Errorf("create connection: %w", err)
+		return Connection{}, fmt.Errorf("create connection: %w", normalizeStoreError(err))
 	}
 	if err := insertAudit(ctx, tx, p.User.ID, "connection.create", created, "success"); err != nil {
 		return Connection{}, err
@@ -143,7 +144,7 @@ func (s *PGStore) Update(ctx context.Context, p identity.Principal, id string, i
 		RETURNING id, name, kind, driver, scope, owner_user_id, team_id, endpoint, config, octet_length(secret_ciphertext) > 0`,
 		id, next.Name, next.Kind, next.Driver, normalizeJSON(next.Endpoint), normalizeJSON(next.Config), keyID, ciphertext, p.User.ID))
 	if err != nil {
-		return Connection{}, fmt.Errorf("update connection: %w", err)
+		return Connection{}, fmt.Errorf("update connection: %w", normalizeStoreError(err))
 	}
 	if err := insertAudit(ctx, tx, p.User.ID, "connection.update", updated, "success"); err != nil {
 		return Connection{}, err
@@ -152,6 +153,15 @@ func (s *PGStore) Update(ctx context.Context, p identity.Principal, id string, i
 		return Connection{}, fmt.Errorf("commit update connection: %w", err)
 	}
 	return updated, nil
+}
+
+func normalizeStoreError(err error) error {
+	var pgErr *pgconn.PgError
+	if errors.As(err, &pgErr) && pgErr.Code == "23505" &&
+		(pgErr.ConstraintName == "connections_personal_name" || pgErr.ConstraintName == "connections_team_name") {
+		return fmt.Errorf("%w: %s", ErrConflict, pgErr.ConstraintName)
+	}
+	return err
 }
 
 func (s *PGStore) Delete(ctx context.Context, p identity.Principal, id string) error {

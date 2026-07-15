@@ -14,8 +14,23 @@ import (
 	"dbworkbench/api/internal/identity"
 	"dbworkbench/api/internal/migrate"
 	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/jackc/pgx/v5/pgxpool"
 )
+
+func TestNormalizeStoreErrorMapsConnectionNameConstraintToConflict(t *testing.T) {
+	err := normalizeStoreError(&pgconn.PgError{Code: "23505", ConstraintName: "connections_personal_name"})
+	if !errors.Is(err, ErrConflict) {
+		t.Fatalf("err = %v, want %v", err, ErrConflict)
+	}
+}
+
+func TestNormalizeStoreErrorLeavesOtherErrorsUntouched(t *testing.T) {
+	want := errors.New("boom")
+	if got := normalizeStoreError(want); !errors.Is(got, want) {
+		t.Fatalf("got = %v, want %v", got, want)
+	}
+}
 
 func TestPGStoreAuthorizationAndSecretUseIntegration(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
@@ -187,6 +202,29 @@ func TestPGStoreCreateRequiresSecretIntegration(t *testing.T) {
 	})
 	if err == nil {
 		t.Fatal("create with empty secret succeeded")
+	}
+}
+
+func TestPGStoreAllowsSameNameAcrossKindsIntegration(t *testing.T) {
+	ctx, cancel := context.WithTimeout(context.Background(), 45*time.Second)
+	defer cancel()
+	fixture := registryIntegration(t, ctx)
+
+	for _, connection := range []Connection{
+		{ID: "conn_same_name_db", Name: "10.10.80.100", Kind: "database", Driver: "postgres", Scope: "personal", Endpoint: rawJSON(`{"host":"10.10.80.100","port":5432}`), Config: rawJSON(`{}`)},
+		{ID: "conn_same_name_ssh", Name: "10.10.80.100", Kind: "ssh", Driver: "ssh", Scope: "personal", Endpoint: rawJSON(`{"host":"10.10.80.100","port":22}`), Config: rawJSON(`{}`)},
+	} {
+		if _, err := fixture.store.Create(ctx, fixture.alice, SaveInput{Connection: connection, Secret: &Secret{Username: "root", Password: "secret"}}); err != nil {
+			t.Fatalf("create %s connection: %v", connection.Kind, err)
+		}
+	}
+
+	_, err := fixture.store.Create(ctx, fixture.alice, SaveInput{
+		Connection: Connection{ID: "conn_same_name_ssh_duplicate", Name: "10.10.80.100", Kind: "ssh", Driver: "ssh", Scope: "personal", Endpoint: rawJSON(`{"host":"10.10.80.100","port":22}`), Config: rawJSON(`{}`)},
+		Secret:     &Secret{Username: "root", Password: "secret"},
+	})
+	if !errors.Is(err, ErrConflict) {
+		t.Fatalf("duplicate SSH name error = %v, want %v", err, ErrConflict)
 	}
 }
 

@@ -299,6 +299,28 @@ func TestConnectionRegistryMapsTeamDenial(t *testing.T) {
 	assertErrorCode(t, rr.Body.String(), "forbidden")
 }
 
+func TestConnectionRegistryMapsDuplicateNameToConflict(t *testing.T) {
+	fakeRegistry := &fakeConnectionRegistry{err: registry.ErrConflict}
+	router, sessions, _ := newAuthTestRouterWithRegistry(t, true, fakeRegistry)
+	loginSession := createAuthSession(t, sessions)
+
+	body := `{"connection":{"id":"conn_duplicate","name":"Main","kind":"ssh","driver":"ssh","scope":"personal","endpoint":{"host":"bastion","port":22},"config":{}},"secret":{"username":"ops","password":"secret"}}`
+	rr := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodPost, "/api/registry/v2/connections", strings.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("X-CSRF-Token", loginSession.CSRFToken)
+	req.AddCookie(&http.Cookie{Name: authCookieName, Value: loginSession.ID})
+	router.ServeHTTP(rr, req)
+
+	if rr.Code != http.StatusConflict {
+		t.Fatalf("status = %d body = %s", rr.Code, rr.Body.String())
+	}
+	assertErrorCode(t, rr.Body.String(), "connection_name_conflict")
+	if !strings.Contains(rr.Body.String(), "同类型连接中已存在") {
+		t.Fatalf("body = %s", rr.Body.String())
+	}
+}
+
 func TestConnectionRegistryRejectsUnknownFieldsWithRequestID(t *testing.T) {
 	router, sessions, _ := newAuthTestRouterWithRegistry(t, true, &fakeConnectionRegistry{})
 	loginSession := createAuthSession(t, sessions)

@@ -42,4 +42,5 @@ type SealedSecret struct {
 var (
 	ErrForbidden = errors.New("forbidden")
 	ErrNotFound  = errors.New("connection not found")
+	ErrConflict  = errors.New("connection name conflict")
 )

@@ -18,7 +18,7 @@ func TestFilesAreOrderedAndNamed(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(files) != 2 || files[0].Name != "0001_identity_registry.sql" || files[1].Name != "0002_logs.sql" {
+	if len(files) != 3 || files[0].Name != "0001_identity_registry.sql" || files[1].Name != "0002_logs.sql" || files[2].Name != "0003_connection_names_by_kind.sql" {
 		t.Fatalf("files = %+v", files)
 	}
 	if !strings.Contains(files[0].SQL, "CREATE TABLE users") || !strings.Contains(files[0].SQL, "CREATE TABLE connections") {
@@ -26,6 +26,9 @@ func TestFilesAreOrderedAndNamed(t *testing.T) {
 	}
 	if !strings.Contains(files[1].SQL, "CREATE TABLE log_sessions") || !strings.Contains(files[1].SQL, "CREATE TABLE log_entries") {
 		t.Fatal("required log tables missing")
+	}
+	if !strings.Contains(files[2].SQL, "owner_user_id, kind, lower(name)") || !strings.Contains(files[2].SQL, "team_id, kind, lower(name)") {
+		t.Fatal("connection name indexes must include kind")
 	}
 }
 
@@ -127,8 +130,8 @@ func TestApplyIntegration(t *testing.T) {
 	if err := pool.QueryRow(ctx, "SELECT count(*) FROM schema_migrations").Scan(&applied); err != nil {
 		t.Fatalf("count schema migrations: %v", err)
 	}
-	if applied != 2 {
-		t.Fatalf("applied migrations = %d, want 2", applied)
+	if applied != 3 {
+		t.Fatalf("applied migrations = %d, want 3", applied)
 	}
 
 	for _, table := range []string{"users", "teams", "team_members", "connections", "audit_events", "log_sessions", "log_source_files", "log_entries", "log_scope_stats", "log_time_buckets"} {

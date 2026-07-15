@@ -2,6 +2,7 @@ import { render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { expect, it, vi } from 'vitest'
 import { AuthProvider } from '../auth/AuthProvider'
+import { AuthAPIError } from '../auth/client'
 import type { AuthSession } from '../auth/types'
 import type { ConnectionsClient } from '../connections/client'
 import type { Connection, ConnectionFilters, SaveInput } from '../connections/types'
@@ -168,6 +169,21 @@ it('keeps create errors visible inside the connection dialog', async () => {
 
   expect(await within(dialog).findByRole('alert')).toHaveTextContent('连接名称已存在')
   expect(dialog).toBeVisible()
+})
+
+it('shows duplicate same-kind names as a field error', async () => {
+  renderPage(fakeConnections({createError: new AuthAPIError(409, 'connection_name_conflict', '同一范围的同类型连接中已存在该名称')}))
+  await screen.findByRole('row', {name: /Analytics/})
+
+  await userEvent.click(screen.getByRole('button', {name: '新建连接'}))
+  const dialog = screen.getByRole('dialog', {name: '新建连接'})
+  await userEvent.type(within(dialog).getByLabelText('连接名称'), 'Analytics')
+  await userEvent.type(within(dialog).getByLabelText('主机'), 'db.internal')
+  await userEvent.type(within(dialog).getByLabelText('密码'), 'secret')
+  await userEvent.click(within(dialog).getByRole('button', {name: '保存连接'}))
+
+  expect(await within(dialog).findByRole('alert')).toHaveTextContent('同一范围的同类型连接中已存在该名称')
+  expect(within(dialog).getByLabelText('连接名称')).toHaveAttribute('aria-invalid', 'true')
 })
 
 it('edits records with redacted secret fields and preserves secrets when left blank', async () => {
