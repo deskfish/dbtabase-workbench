@@ -354,18 +354,24 @@ func (s *Store) DeleteUser(ctx context.Context, actor Principal, userID string) 
 	if err != nil {
 		return fmt.Errorf("load admin teams for delete user: %w", err)
 	}
-	defer adminTeams.Close()
+	var adminTeamIDs []string
 	for adminTeams.Next() {
 		var teamID string
 		if err := adminTeams.Scan(&teamID); err != nil {
+			adminTeams.Close()
 			return fmt.Errorf("scan admin team for delete user: %w", err)
 		}
+		adminTeamIDs = append(adminTeamIDs, teamID)
+	}
+	if err := adminTeams.Err(); err != nil {
+		adminTeams.Close()
+		return fmt.Errorf("iterate admin teams for delete user: %w", err)
+	}
+	adminTeams.Close()
+	for _, teamID := range adminTeamIDs {
 		if err := ensureAnotherTeamAdmin(ctx, tx, teamID, userID); err != nil {
 			return err
 		}
-	}
-	if err := adminTeams.Err(); err != nil {
-		return fmt.Errorf("iterate admin teams for delete user: %w", err)
 	}
 
 	reassignQueries := []string{

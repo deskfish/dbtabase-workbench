@@ -331,6 +331,37 @@ func TestDeleteUserIntegration(t *testing.T) {
 	}
 }
 
+func TestDeleteUserReassignsTeamAdminIntegration(t *testing.T) {
+	ctx, cancel := context.WithTimeout(context.Background(), 45*time.Second)
+	defer cancel()
+	store, _ := integrationStore(t, ctx)
+	root := bootstrapRootPrincipal(t, ctx, store)
+
+	target, err := store.CreateUser(ctx, root, "team-admin-delete", "Team Admin", "password", "member")
+	if err != nil {
+		t.Fatal(err)
+	}
+	team, err := store.CreateTeam(ctx, root, "Delete Admin Team")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := store.AddTeamMember(ctx, root, team.ID, target.ID, "admin"); err != nil {
+		t.Fatal(err)
+	}
+	if err := store.DeleteUser(ctx, root, target.ID); err != nil {
+		t.Fatal(err)
+	}
+	members, err := store.ListTeamMembers(ctx, root, team.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, member := range members {
+		if member.User.ID == target.ID {
+			t.Fatalf("deleted team admin still listed: %+v", member)
+		}
+	}
+}
+
 func TestIdentityStoreErrorMapping(t *testing.T) {
 	tests := []struct {
 		name string
